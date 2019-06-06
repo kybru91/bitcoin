@@ -51,7 +51,4 @@ public:
     virtual bool HaveWatchOnly() const;
 };
 
-/** Return the CKeyID of the key involved in a script (if there is a unique one). */
-CKeyID GetKeyForDestination(const CBasicKeyStore& store, const CTxDestination& dest);
-
 #endif // BITCOIN_KEYSTORE_H
