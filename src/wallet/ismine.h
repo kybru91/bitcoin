@@ -15,7 +15,7 @@ class CKeyStore;
 class CScript;
 
 /** IsMine() return codes */
-enum isminetype
+enum isminetype : unsigned int
 {
     ISMINE_NO         = 0,
     ISMINE_WATCH_ONLY = 1 << 0,
