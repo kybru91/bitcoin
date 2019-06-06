@@ -16,7 +16,7 @@
 
 #include <boost/variant.hpp>
 
-class CKeyStore;
+class CBasicKeyStore;
 class CPubKey;
 class CScript;
 struct InitInterfaces;
@@ -69,7 +69,7 @@ extern std::string HelpExampleCli(const std::string& methodname, const std::stri
 extern std::string HelpExampleRpc(const std::string& methodname, const std::string& args);
 
 CPubKey HexToPubKey(const std::string& hex_in);
-CPubKey AddrToPubKey(CKeyStore* const keystore, const std::string& addr_in);
+CPubKey AddrToPubKey(CBasicKeyStore* const keystore, const std::string& addr_in);
 CScript CreateMultisigRedeemscript(const int required, const std::vector<CPubKey>& pubkeys);
 
 UniValue DescribeAddress(const CTxDestination& dest);
