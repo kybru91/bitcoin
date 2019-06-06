@@ -4,7 +4,7 @@
 
 #include <consensus/tx_verify.h>
 #include <key.h>
-#include <keystore.h>
+#include <script/signingprovider.h>
 #include <validation.h>
 #include <policy/policy.h>
 #include <script/script.h>

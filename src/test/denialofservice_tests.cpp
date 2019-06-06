@@ -6,7 +6,7 @@
 
 #include <banman.h>
 #include <chainparams.h>
-#include <keystore.h>
+#include <script/signingprovider.h>
 #include <net.h>
 #include <net_processing.h>
 #include <script/sign.h>

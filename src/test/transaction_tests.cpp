@@ -12,7 +12,7 @@
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <key.h>
-#include <keystore.h>
+#include <script/signingprovider.h>
 #include <validation.h>
 #include <policy/policy.h>
 #include <policy/settings.h>

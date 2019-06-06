@@ -10,7 +10,7 @@
 #include <core_io.h>
 #include <index/txindex.h>
 #include <key_io.h>
-#include <keystore.h>
+#include <script/signingprovider.h>
 #include <merkleblock.h>
 #include <node/coin.h>
 #include <node/psbt.h>

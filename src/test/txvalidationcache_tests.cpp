@@ -13,7 +13,7 @@
 #include <script/sign.h>
 #include <test/setup_common.h>
 #include <util/time.h>
-#include <keystore.h>
+#include <script/signingprovider.h>
 
 #include <boost/test/unit_test.hpp>
 
