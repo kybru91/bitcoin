@@ -123,7 +123,7 @@ static UniValue createmultisig(const JSONRPCRequest& request)
 
     // Construct using pay-to-script-hash:
     const CScript inner = CreateMultisigRedeemscript(required, pubkeys);
-    CBasicKeyStore keystore;
+    FillableSigningProvider keystore;
     const CTxDestination dest = AddAndGetDestinationForScript(keystore, inner, output_type);
 
     UniValue result(UniValue::VOBJ);

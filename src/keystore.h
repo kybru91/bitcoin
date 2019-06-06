@@ -16,7 +16,7 @@
 #include <boost/signals2/signal.hpp>
 
 /** Basic key store, that keeps keys in an address->secret map */
-class CBasicKeyStore : public SigningProvider
+class FillableSigningProvider : public SigningProvider
 {
 protected:
     mutable CCriticalSection cs_KeyStore;
