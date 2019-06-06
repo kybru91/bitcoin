@@ -286,14 +286,14 @@ bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const C
     // Make sure we aren't adding private keys to private key disabled wallets
     assert(!IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
 
-    // CCryptoKeyStore has no concept of wallet databases, but calls AddCryptedKey
+    // FillableSigningProvider has no concept of wallet databases, but calls AddCryptedKey
     // which is overridden below.  To avoid flushes, the database handle is
     // tunneled through to it.
     bool needsDB = !encrypted_batch;
     if (needsDB) {
         encrypted_batch = &batch;
     }
-    if (!CCryptoKeyStore::AddKeyPubKey(secret, pubkey)) {
+    if (!AddKeyPubKeyInner(secret, pubkey)) {
         if (needsDB) encrypted_batch = nullptr;
         return false;
     }
@@ -328,7 +328,7 @@ bool CWallet::AddKeyPubKey(const CKey& secret, const CPubKey &pubkey)
 bool CWallet::AddCryptedKey(const CPubKey &vchPubKey,
                             const std::vector<unsigned char> &vchCryptedSecret)
 {
-    if (!CCryptoKeyStore::AddCryptedKey(vchPubKey, vchCryptedSecret))
+    if (!AddCryptedKeyInner(vchPubKey, vchCryptedSecret))
         return false;
     {
         LOCK(cs_wallet);
@@ -396,7 +396,7 @@ void CWallet::UpgradeKeyMetadata()
 
 bool CWallet::LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
 {
-    return CCryptoKeyStore::AddCryptedKey(vchPubKey, vchCryptedSecret);
+    return AddCryptedKeyInner(vchPubKey, vchCryptedSecret);
 }
 
 /**
@@ -423,7 +423,7 @@ bool CWallet::AddCScript(const CScript& redeemScript)
 
 bool CWallet::AddCScriptWithDB(WalletBatch& batch, const CScript& redeemScript)
 {
-    if (!CCryptoKeyStore::AddCScript(redeemScript))
+    if (!FillableSigningProvider::AddCScript(redeemScript))
         return false;
     if (batch.WriteCScript(Hash160(redeemScript), redeemScript)) {
         UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
@@ -444,12 +444,12 @@ bool CWallet::LoadCScript(const CScript& redeemScript)
         return true;
     }
 
-    return CCryptoKeyStore::AddCScript(redeemScript);
+    return FillableSigningProvider::AddCScript(redeemScript);
 }
 
 bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest)
 {
-    if (!CCryptoKeyStore::AddWatchOnly(dest))
+    if (!FillableSigningProvider::AddWatchOnly(dest))
         return false;
     const CKeyMetadata& meta = m_script_metadata[CScriptID(dest)];
     UpdateTimeFirstKey(meta.nCreateTime);
@@ -482,7 +482,7 @@ bool CWallet::AddWatchOnly(const CScript& dest, int64_t nCreateTime)
 bool CWallet::RemoveWatchOnly(const CScript &dest)
 {
     AssertLockHeld(cs_wallet);
-    if (!CCryptoKeyStore::RemoveWatchOnly(dest))
+    if (!FillableSigningProvider::RemoveWatchOnly(dest))
         return false;
     if (!HaveWatchOnly())
         NotifyWatchonlyChanged(false);
@@ -494,7 +494,7 @@ bool CWallet::RemoveWatchOnly(const CScript &dest)
 
 bool CWallet::LoadWatchOnly(const CScript &dest)
 {
-    return CCryptoKeyStore::AddWatchOnly(dest);
+    return FillableSigningProvider::AddWatchOnly(dest);
 }
 
 bool CWallet::Unlock(const SecureString& strWalletPassphrase, bool accept_no_keys)
@@ -510,7 +510,7 @@ bool CWallet::Unlock(const SecureString& strWalletPassphrase, bool accept_no_key
                 return false;
             if (!crypter.Decrypt(pMasterKey.second.vchCryptedKey, _vMasterKey))
                 continue; // try another master key
-            if (CCryptoKeyStore::Unlock(_vMasterKey, accept_no_keys)) {
+            if (Unlock(_vMasterKey, accept_no_keys)) {
                 // Now that we've unlocked, upgrade the key metadata
                 UpgradeKeyMetadata();
                 return true;
@@ -536,7 +536,7 @@ bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase,
                 return false;
             if (!crypter.Decrypt(pMasterKey.second.vchCryptedKey, _vMasterKey))
                 return false;
-            if (CCryptoKeyStore::Unlock(_vMasterKey))
+            if (Unlock(_vMasterKey))
             {
                 int64_t nStartTime = GetTimeMillis();
                 crypter.SetKeyFromPassphrase(strNewWalletPassphrase, pMasterKey.second.vchSalt, pMasterKey.second.nDeriveIterations, pMasterKey.second.nDerivationMethod);
@@ -3165,7 +3165,7 @@ DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
     }
 
     {
-        LOCK(cs_KeyStore);
+        LOCK(cs_wallet);
         // This wallet is in its first run if all of these are empty
         fFirstRunRet = mapKeys.empty() && mapCryptedKeys.empty() && mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty()
             && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET);
@@ -4531,4 +4531,223 @@ bool CWallet::AddKeyOriginWithDB(WalletBatch& batch, const CPubKey& pubkey, cons
     mapKeyMetadata[pubkey.GetID()].has_key_origin = true;
     mapKeyMetadata[pubkey.GetID()].hdKeypath = WriteHDKeypath(info.path);
     return batch.WriteKeyMetadata(mapKeyMetadata[pubkey.GetID()], pubkey, true);
+}
+
+bool CWallet::SetCrypted()
+{
+    LOCK(cs_KeyStore);
+    if (fUseCrypto)
+        return true;
+    if (!mapKeys.empty())
+        return false;
+    fUseCrypto = true;
+    return true;
+}
+
+bool CWallet::IsLocked() const
+{
+    if (!IsCrypted()) {
+        return false;
+    }
+    LOCK(cs_KeyStore);
+    return vMasterKey.empty();
+}
+
+bool CWallet::Lock()
+{
+    if (!SetCrypted())
+        return false;
+
+    {
+        LOCK(cs_KeyStore);
+        vMasterKey.clear();
+    }
+
+    NotifyStatusChanged(this);
+    return true;
+}
+
+
+static bool EncryptSecret(const CKeyingMaterial& vMasterKey, const CKeyingMaterial &vchPlaintext, const uint256& nIV, std::vector<unsigned char> &vchCiphertext)
+{
+    CCrypter cKeyCrypter;
+    std::vector<unsigned char> chIV(WALLET_CRYPTO_IV_SIZE);
+    memcpy(chIV.data(), &nIV, WALLET_CRYPTO_IV_SIZE);
+    if(!cKeyCrypter.SetKey(vMasterKey, chIV))
+        return false;
+    return cKeyCrypter.Encrypt(*((const CKeyingMaterial*)&vchPlaintext), vchCiphertext);
+}
+
+static bool DecryptSecret(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCiphertext, const uint256& nIV, CKeyingMaterial& vchPlaintext)
+{
+    CCrypter cKeyCrypter;
+    std::vector<unsigned char> chIV(WALLET_CRYPTO_IV_SIZE);
+    memcpy(chIV.data(), &nIV, WALLET_CRYPTO_IV_SIZE);
+    if(!cKeyCrypter.SetKey(vMasterKey, chIV))
+        return false;
+    return cKeyCrypter.Decrypt(vchCiphertext, *((CKeyingMaterial*)&vchPlaintext));
+}
+
+static bool DecryptKey(const CKeyingMaterial& vMasterKey, const std::vector<unsigned char>& vchCryptedSecret, const CPubKey& vchPubKey, CKey& key)
+{
+    CKeyingMaterial vchSecret;
+    if(!DecryptSecret(vMasterKey, vchCryptedSecret, vchPubKey.GetHash(), vchSecret))
+        return false;
+
+    if (vchSecret.size() != 32)
+        return false;
+
+    key.Set(vchSecret.begin(), vchSecret.end(), vchPubKey.IsCompressed());
+    return key.VerifyPubKey(vchPubKey);
+}
+
+bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
+{
+    {
+        LOCK(cs_KeyStore);
+        if (!SetCrypted())
+            return false;
+
+        bool keyPass = mapCryptedKeys.empty(); // Always pass when there are no encrypted keys
+        bool keyFail = false;
+        CryptedKeyMap::const_iterator mi = mapCryptedKeys.begin();
+        for (; mi != mapCryptedKeys.end(); ++mi)
+        {
+            const CPubKey &vchPubKey = (*mi).second.first;
+            const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
+            CKey key;
+            if (!DecryptKey(vMasterKeyIn, vchCryptedSecret, vchPubKey, key))
+            {
+                keyFail = true;
+                break;
+            }
+            keyPass = true;
+            if (fDecryptionThoroughlyChecked)
+                break;
+        }
+        if (keyPass && keyFail)
+        {
+            LogPrintf("The wallet is probably corrupted: Some keys decrypt but not all.\n");
+            throw std::runtime_error("Error unlocking wallet: some keys decrypt but not all. Your wallet file may be corrupt.");
+        }
+        if (keyFail || (!keyPass && !accept_no_keys))
+            return false;
+        vMasterKey = vMasterKeyIn;
+        fDecryptionThoroughlyChecked = true;
+    }
+    NotifyStatusChanged(this);
+    return true;
+}
+
+bool CWallet::HaveKey(const CKeyID &address) const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::HaveKey(address);
+    }
+    return mapCryptedKeys.count(address) > 0;
+}
+
+bool CWallet::GetKey(const CKeyID &address, CKey& keyOut) const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::GetKey(address, keyOut);
+    }
+
+    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
+    if (mi != mapCryptedKeys.end())
+    {
+        const CPubKey &vchPubKey = (*mi).second.first;
+        const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
+        return DecryptKey(vMasterKey, vchCryptedSecret, vchPubKey, keyOut);
+    }
+    return false;
+}
+
+bool CWallet::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted())
+        return FillableSigningProvider::GetPubKey(address, vchPubKeyOut);
+
+    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
+    if (mi != mapCryptedKeys.end())
+    {
+        vchPubKeyOut = (*mi).second.first;
+        return true;
+    }
+    // Check for watch-only pubkeys
+    return FillableSigningProvider::GetPubKey(address, vchPubKeyOut);
+}
+
+std::set<CKeyID> CWallet::GetKeys() const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::GetKeys();
+    }
+    std::set<CKeyID> set_address;
+    for (const auto& mi : mapCryptedKeys) {
+        set_address.insert(mi.first);
+    }
+    return set_address;
+}
+
+bool CWallet::EncryptKeys(CKeyingMaterial& vMasterKeyIn)
+{
+    LOCK(cs_KeyStore);
+    if (!mapCryptedKeys.empty() || IsCrypted())
+        return false;
+
+    fUseCrypto = true;
+    for (const KeyMap::value_type& mKey : mapKeys)
+    {
+        const CKey &key = mKey.second;
+        CPubKey vchPubKey = key.GetPubKey();
+        CKeyingMaterial vchSecret(key.begin(), key.end());
+        std::vector<unsigned char> vchCryptedSecret;
+        if (!EncryptSecret(vMasterKeyIn, vchSecret, vchPubKey.GetHash(), vchCryptedSecret))
+            return false;
+        if (!AddCryptedKey(vchPubKey, vchCryptedSecret))
+            return false;
+    }
+    mapKeys.clear();
+    return true;
+}
+
+bool CWallet::AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey)
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::AddKeyPubKey(key, pubkey);
+    }
+
+    if (IsLocked()) {
+        return false;
+    }
+
+    std::vector<unsigned char> vchCryptedSecret;
+    CKeyingMaterial vchSecret(key.begin(), key.end());
+    if (!EncryptSecret(vMasterKey, vchSecret, pubkey.GetHash(), vchCryptedSecret)) {
+        return false;
+    }
+
+    if (!AddCryptedKey(pubkey, vchCryptedSecret)) {
+        return false;
+    }
+    return true;
+}
+
+
+bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
+{
+    LOCK(cs_KeyStore);
+    if (!SetCrypted()) {
+        return false;
+    }
+
+    mapCryptedKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
+    ImplicitlyLearnRelatedKeyScripts(vchPubKey);
+    return true;
 }
