@@ -20,6 +20,7 @@
 #include <wallet/coinselection.h>
 #include <wallet/crypter.h>
 #include <wallet/ismine.h>
+#include <wallet/scriptpubkeyman.h>
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
 
@@ -833,6 +834,11 @@ private:
     //! Fetches a key from the keypool
     bool GetKeyFromPool(CPubKey &key, bool internal = false);
 
+    std::map<OutputType, std::shared_ptr<ScriptPubKeyMan>> m_external_spk_managers;
+    std::map<OutputType, std::shared_ptr<ScriptPubKeyMan>> m_internal_spk_managers;
+
+    std::map<uint256, std::shared_ptr<ScriptPubKeyMan>> m_spk_managers;
+
 public:
     /*
      * Main wallet lock.
@@ -1356,6 +1362,12 @@ public:
 
     /** Implement lookup of key origin information through wallet key metadata. */
     bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
+
+    //! Get the LegacyScriptPubKeyMan which is used for all types, internal, and external.
+    std::shared_ptr<LegacyScriptPubKeyMan> GetLegacyScriptPubKeyMan();
+
+    //! Make a LegacyScriptPubKeyMan and set it for all types, internal, and external.
+    void SetupLegacyScriptPubKeyMan();
 };
 
 /**

@@ -201,6 +201,9 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
              CWalletScanState &wss, std::string& strType, std::string& strErr) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet)
 {
     try {
+        // Get legacy scriptpubkeyman
+        auto legacy_spk_man = pwallet->GetLegacyScriptPubKeyMan();
+
         // Unserialize
         // Taking advantage of the fact that pair serialization
         // is just the two items serialized one after the other

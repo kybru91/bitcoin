@@ -4268,6 +4268,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
     // TODO: Can't use std::make_shared because we need a custom deleter but
     // should be possible to use std::allocate_shared.
     std::shared_ptr<CWallet> walletInstance(new CWallet(&chain, location, WalletDatabase::Create(location.GetPath())), ReleaseWallet);
+    auto legacy_spk_man = walletInstance->GetLegacyScriptPubKeyMan();
     DBErrors nLoadWalletRet = walletInstance->LoadWallet(fFirstRun);
     if (nLoadWalletRet != DBErrors::LOAD_OK)
     {
@@ -4934,4 +4935,33 @@ bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<uns
     mapCryptedKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
     ImplicitlyLearnRelatedKeyScripts(vchPubKey);
     return true;
+}
+
+std::shared_ptr<LegacyScriptPubKeyMan> CWallet::GetLegacyScriptPubKeyMan()
+{
+    SetupLegacyScriptPubKeyMan();
+    return std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers[OutputType::LEGACY]);
+}
+
+void CWallet::SetupLegacyScriptPubKeyMan()
+{
+    if (m_internal_spk_managers.empty() && m_external_spk_managers.empty() && m_spk_managers.empty()) {
+        auto spk_manager = std::shared_ptr<ScriptPubKeyMan>(new LegacyScriptPubKeyMan());
+        m_internal_spk_managers[OutputType::LEGACY] = spk_manager;
+        m_internal_spk_managers[OutputType::P2SH_SEGWIT] = spk_manager;
+        m_internal_spk_managers[OutputType::BECH32] = spk_manager;
+        m_external_spk_managers[OutputType::LEGACY] = spk_manager;
+        m_external_spk_managers[OutputType::P2SH_SEGWIT] = spk_manager;
+        m_external_spk_managers[OutputType::BECH32] = spk_manager;
+        m_spk_managers[spk_manager->GetID()] = spk_manager;
+    }
+    // These all need to exist and be the same
+    assert(m_internal_spk_managers.count(OutputType::LEGACY) > 0);
+    std::shared_ptr<ScriptPubKeyMan> spk_man = m_internal_spk_managers.at(OutputType::LEGACY);
+    assert(m_internal_spk_managers.at(OutputType::P2SH_SEGWIT) == spk_man);
+    assert(m_internal_spk_managers.at(OutputType::BECH32) == spk_man);
+    assert(m_external_spk_managers.at(OutputType::LEGACY) == spk_man);
+    assert(m_external_spk_managers.at(OutputType::P2SH_SEGWIT) == spk_man);
+    assert(m_external_spk_managers.at(OutputType::BECH32) == spk_man);
+    assert(m_spk_managers.size() == 1);
 }
