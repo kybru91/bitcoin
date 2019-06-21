@@ -10,14 +10,39 @@
 #include <wallet/crypter.h>
 #include <wallet/ismine.h>
 #include <wallet/walletdb.h>
+#include <wallet/walletutil.h>
+
+#include <functional>
 
 #include <boost/signals2/signal.hpp>
 
 enum class OutputType;
 
+typedef std::function<void(WalletBatch&, uint64_t)> FlagFuncWithDB;
+typedef std::function<bool(uint64_t)> FlagSetFunc;
+typedef std::function<bool(enum WalletFeature)> VersionFunc;
+typedef std::function<std::string()> NameFunc;
+typedef std::function<void(enum WalletFeature, WalletBatch*, bool)> SetVersionFunc;
+
 class ScriptPubKeyMan
 {
+protected:
+
+    FlagSetFunc IsWalletFlagSet; // Function pointer to function that determines if a wallet flag is set
+    FlagFuncWithDB UnsetWalletFlagWithDB; // Function pointer to function to unset wallet flags
+    NameFunc GetDisplayName; // Function pointer to GetDisplayName to get the name of a wallet for WalletLogPrintf
+
+    /** Internal database handle. */
+    std::shared_ptr<WalletDatabase> m_database;
+
 public:
+    ScriptPubKeyMan(FlagSetFunc is_set_func, FlagFuncWithDB unset_flag_func, NameFunc wallet_name_func, std::shared_ptr<WalletDatabase> database)
+        :   IsWalletFlagSet(is_set_func),
+            UnsetWalletFlagWithDB(unset_flag_func),
+            GetDisplayName(wallet_name_func),
+            m_database(database)
+        {}
+
     virtual ~ScriptPubKeyMan() {};
     virtual bool GetNewDestination(const OutputType type, CTxDestination& dest, std::string& error) { return false; }
     virtual isminetype IsMine(const CScript& script) const { return ISMINE_NO; }
@@ -81,8 +106,16 @@ public:
 
 class LegacyScriptPubKeyMan : public ScriptPubKeyMan, public FillableSigningProvider
 {
+protected:
+    VersionFunc CanSupportFeature; // Function pointer to function that indicates whether the feature is supported
+    SetVersionFunc SetMinVersion; // Function pointer to SetMinVersion in the wallet
+
 public:
-    LegacyScriptPubKeyMan() {}
+    LegacyScriptPubKeyMan(FlagSetFunc is_set_func, FlagFuncWithDB unset_flag_func, NameFunc wallet_name_func, VersionFunc feature_sup_func, SetVersionFunc set_version_func, std::shared_ptr<WalletDatabase> database)
+        :   ScriptPubKeyMan(is_set_func, unset_flag_func, wallet_name_func, database),
+            CanSupportFeature(feature_sup_func),
+            SetMinVersion(set_version_func)
+        {}
 
     bool GetNewDestination(const OutputType type, CTxDestination& dest, std::string& error) override EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     isminetype IsMine(const CScript& script) const override;

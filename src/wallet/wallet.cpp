@@ -4946,7 +4946,7 @@ std::shared_ptr<LegacyScriptPubKeyMan> CWallet::GetLegacyScriptPubKeyMan()
 void CWallet::SetupLegacyScriptPubKeyMan()
 {
     if (m_internal_spk_managers.empty() && m_external_spk_managers.empty() && m_spk_managers.empty()) {
-        auto spk_manager = std::shared_ptr<ScriptPubKeyMan>(new LegacyScriptPubKeyMan());
+        auto spk_manager = std::shared_ptr<ScriptPubKeyMan>(new LegacyScriptPubKeyMan(std::bind(&CWallet::IsWalletFlagSet, this, std::placeholders::_1), std::bind(&CWallet::UnsetWalletFlagWithDB, this, std::placeholders::_1, std::placeholders::_2), std::bind(&CWallet::GetDisplayName, this), std::bind(&CWallet::CanSupportFeature, this, std::placeholders::_1), std::bind(&CWallet::SetMinVersion, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), database));
         m_internal_spk_managers[OutputType::LEGACY] = spk_manager;
         m_internal_spk_managers[OutputType::P2SH_SEGWIT] = spk_manager;
         m_internal_spk_managers[OutputType::BECH32] = spk_manager;
