@@ -152,7 +152,7 @@ bool LegacyScriptPubKeyMan::SetupGeneration(bool force)
 
 bool LegacyScriptPubKeyMan::IsHDEnabled() const
 {
-    return false;
+    return !hdChain.seed_id.IsNull();
 }
 
 bool LegacyScriptPubKeyMan::CanGetAddresses(bool internal)
@@ -454,7 +454,17 @@ bool LegacyScriptPubKeyMan::GetWatchPubKey(const CKeyID &address, CPubKey &pubke
     return false;
 }
 
-bool LegacyScriptPubKeyMan::HaveKey(const CKeyID &address) const
+void LegacyScriptPubKeyMan::SetHDChain(const CHDChain& chain, bool memonly)
+{
+    LOCK(cs_KeyStore);
+    if (!memonly && !WalletBatch(*m_database).WriteHDChain(chain))
+        throw std::runtime_error(std::string(__func__) + ": writing chain failed");
+
+    hdChain = chain;
+}
+
+// Temp functions, remove later
+std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& LegacyScriptPubKeyMan::GetMapCryptedKeys()
 {
     LOCK(cs_KeyStore);
     if (!IsCrypted()) {

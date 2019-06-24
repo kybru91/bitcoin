@@ -153,6 +153,9 @@ private:
     bool AddWatchOnly(const CScript& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
     bool AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
+    /* the HD chain data model (external chain counters) */
+    CHDChain hdChain;
+
 public:
     LegacyScriptPubKeyMan(FlagSetFunc is_set_func, FlagFuncWithDB unset_flag_func, NameFunc wallet_name_func, VersionFunc feature_sup_func, SetVersionFunc set_version_func, std::shared_ptr<WalletDatabase> database)
         :   ScriptPubKeyMan(is_set_func, unset_flag_func, wallet_name_func, database),
@@ -221,6 +224,10 @@ public:
     //! Adds an encrypted key to the store, without saving it to disk (used by LoadWallet)
     bool LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     void UpdateTimeFirstKey(int64_t nCreateTime) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+
+    /* Set the HD chain model (chain child index counters) */
+    void SetHDChain(const CHDChain& chain, bool memonly);
+    const CHDChain& GetHDChain() const { return hdChain; }
 
     //! Adds a watch-only address to the store, without saving it to disk (used by LoadWallet)
     bool LoadWatchOnly(const CScript &dest);
