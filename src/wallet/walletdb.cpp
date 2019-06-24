@@ -369,6 +369,12 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssValue >> keyMeta;
             wss.nKeyMeta++;
             pwallet->LoadKeyMetadata(vchPubKey.GetID(), keyMeta);
+            if (legacy_spk_man) {
+                legacy_spk_man->LoadKeyMetadata(vchPubKey.GetID(), keyMeta);
+            } else {
+                strErr = "Error: Found key metadata in wallet without LegacyScriptPubKeyMan";
+                return false;
+            }
         } else if (strType == DBKeys::WATCHMETA) {
             CScript script;
             ssKey >> script;
@@ -376,6 +382,12 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssValue >> keyMeta;
             wss.nKeyMeta++;
             pwallet->LoadScriptMetadata(CScriptID(script), keyMeta);
+            if (legacy_spk_man) {
+                legacy_spk_man->LoadScriptMetadata(CScriptID(script), keyMeta);
+            } else {
+                strErr = "Error: Found key metadata in wallet without LegacyScriptPubKeyMan";
+                return false;
+            }
         } else if (strType == DBKeys::DEFAULTKEY) {
             // We don't want or need the default key, but if there is one set,
             // we want to make sure that it is valid so that we can detect corruption
@@ -400,6 +412,15 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             if (!pwallet->LoadCScript(script))
             {
                 strErr = "Error reading wallet database: LoadCScript failed";
+                return false;
+            }
+            if (legacy_spk_man) {
+                if (!legacy_spk_man->LoadCScript(script)) {
+                    strErr = "Error reading wallet database: LegacyScriptPubKeyMan::LoadCScript failed";
+                    return false;
+                }
+            } else {
+                strErr = "Error: Found script in wallet without LegacyScriptPubKeyMan";
                 return false;
             }
         } else if (strType == DBKeys::ORDERPOSNEXT) {
