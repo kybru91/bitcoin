@@ -469,12 +469,9 @@ void CWallet::UpgradeKeyMetadata()
 void CWallet::UpdateTimeFirstKey(int64_t nCreateTime)
 {
     AssertLockHeld(cs_wallet);
-    if (nCreateTime <= 1) {
-        // Cannot determine birthday information, so set the wallet birthday to
-        // the beginning of time.
-        nTimeFirstKey = 1;
-    } else if (!nTimeFirstKey || nCreateTime < nTimeFirstKey) {
-        nTimeFirstKey = nCreateTime;
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        legacy_spk_man->UpdateTimeFirstKey(nCreateTime);
     }
 }
 
@@ -4537,8 +4534,17 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
 
         // No need to read and scan block if block was created before
         // our wallet birthday (as adjusted for block time variability)
-        if (walletInstance->nTimeFirstKey) {
-            if (Optional<int> first_block = locked_chain->findFirstBlockWithTimeAndHeight(walletInstance->nTimeFirstKey - TIMESTAMP_WINDOW, rescan_height, nullptr)) {
+        int64_t time_first_key = std::numeric_limits<int64_t>::max();
+        for (bool internal : {false, true}) {
+            for (OutputType t : output_types) {
+                auto spk_man = walletInstance->GetScriptPubKeyMan(t, internal);
+                if (spk_man) {
+                    std::min(time_first_key, spk_man->GetTimeFirstKey());
+                }
+            }
+        }
+        if (time_first_key) {
+            if (Optional<int> first_block = locked_chain->findFirstBlockWithTimeAndHeight(time_first_key - TIMESTAMP_WINDOW, rescan_height, nullptr)) {
                 rescan_height = *first_block;
             }
         }

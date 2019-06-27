@@ -724,8 +724,6 @@ private:
     std::map<CKeyID, int64_t> m_pool_key_to_index;
     std::atomic<uint64_t> m_wallet_flags{0};
 
-    int64_t nTimeFirstKey GUARDED_BY(cs_wallet) = 0;
-
     /**
      * Private version of AddWatchOnly method which does not accept a
      * timestamp, and which will reset the wallet's nTimeFirstKey value to 1 if
