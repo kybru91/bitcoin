@@ -405,6 +405,7 @@ bool CWallet::AddCryptedKey(const CPubKey &vchPubKey,
 {
     auto legacy_spk_man = GetLegacyScriptPubKeyMan();
     if (legacy_spk_man) {
+        legacy_spk_man->AddKeyMeta(vchPubKey.GetID(), mapKeyMetadata[vchPubKey.GetID()]);
         return legacy_spk_man->AddCryptedKey(vchPubKey, vchCryptedSecret);
     }
     return false;
@@ -885,13 +886,13 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
             return false;
         }
 
+        encrypted_batch->WriteMasterKey(nMasterKeyMaxID, kMasterKey);
+
         auto legacy_spk_man = GetLegacyScriptPubKeyMan();
         if (!legacy_spk_man) {
             assert(false); // This shouldn't happen
         }
         legacy_spk_man->SetEncryptedBatch(encrypted_batch);
-
-        encrypted_batch->WriteMasterKey(nMasterKeyMaxID, kMasterKey);
 
         if (!EncryptKeys(_vMasterKey))
         {
@@ -4741,18 +4742,10 @@ bool CWallet::AddKeyOriginWithDB(WalletBatch& batch, const CPubKey& pubkey, cons
 
 bool CWallet::SetCrypted()
 {
-    LOCK(cs_KeyStore);
+    LOCK(cs_wallet);
     if (fUseCrypto)
         return true;
-    if (!mapKeys.empty())
-        return false;
     fUseCrypto = true;
-
-    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
-    if (legacy_spk_man) {
-        legacy_spk_man->SetCrypted();
-    }
-
     return true;
 }
 
@@ -4761,7 +4754,7 @@ bool CWallet::IsLocked() const
     if (!IsCrypted()) {
         return false;
     }
-    LOCK(cs_KeyStore);
+    LOCK(cs_wallet);
     return vMasterKey.empty();
 }
 
@@ -4770,9 +4763,13 @@ bool CWallet::Lock()
     if (!SetCrypted())
         return false;
 
+    bool result = true;
     {
-        LOCK(cs_KeyStore);
+        LOCK(cs_wallet);
         vMasterKey.clear();
+        for (auto spk_man_pair : m_spk_managers) {
+            result &= spk_man_pair.second->Lock();
+        }
     }
 
     NotifyStatusChanged(this);
@@ -4782,43 +4779,13 @@ bool CWallet::Lock()
 bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
 {
     {
-        LOCK(cs_KeyStore);
-        if (!SetCrypted())
-            return false;
-
-        auto legacy_spk_man = GetLegacyScriptPubKeyMan();
-        if (!legacy_spk_man) {
-            return false;
-        }
-        auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
-
-        bool keyPass = mapCryptedKeys.empty(); // Always pass when there are no encrypted keys
-        bool keyFail = false;
-        CryptedKeyMap::const_iterator mi = mapCryptedKeys.begin();
-        for (; mi != mapCryptedKeys.end(); ++mi)
-        {
-            const CPubKey &vchPubKey = (*mi).second.first;
-            const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-            CKey key;
-            if (!DecryptKey(vMasterKeyIn, vchCryptedSecret, vchPubKey, key))
-            {
-                keyFail = true;
-                break;
+        LOCK(cs_wallet);
+        for (auto spk_man_pair : m_spk_managers) {
+            if (!spk_man_pair.second->Unlock(vMasterKeyIn, accept_no_keys)) {
+                return false;
             }
-            keyPass = true;
-            if (fDecryptionThoroughlyChecked)
-                break;
         }
-        if (keyPass && keyFail)
-        {
-            LogPrintf("The wallet is probably corrupted: Some keys decrypt but not all.\n");
-            throw std::runtime_error("Error unlocking wallet: some keys decrypt but not all. Your wallet file may be corrupt.");
-        }
-        if (keyFail || (!keyPass && !accept_no_keys))
-            return false;
         vMasterKey = vMasterKeyIn;
-        legacy_spk_man->SetEncKey(vMasterKeyIn);
-        fDecryptionThoroughlyChecked = true;
     }
     NotifyStatusChanged(this);
     return true;

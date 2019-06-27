@@ -123,6 +123,9 @@ private:
     //! if fUseCrypto is false, vMasterKey must be empty
     std::atomic<bool> fUseCrypto;
 
+    //! keeps track of whether Unlock has run a thorough check before
+    bool fDecryptionThoroughlyChecked;
+
     CKeyingMaterial vMasterKey GUARDED_BY(cs_KeyStore);
 
     CryptedKeyMap mapCryptedKeys GUARDED_BY(cs_KeyStore);
@@ -136,7 +139,8 @@ public:
         :   ScriptPubKeyMan(is_set_func, unset_flag_func, wallet_name_func, database),
             CanSupportFeature(feature_sup_func),
             SetMinVersion(set_version_func),
-            fUseCrypto(false)
+            fUseCrypto(false),
+            fDecryptionThoroughlyChecked(false)
         {}
 
     bool GetNewDestination(const OutputType type, CTxDestination& dest, std::string& error) override EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
@@ -192,8 +196,6 @@ public:
     bool LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
 
     // Temp functions to make the integration with CWallet work. will remove later
-    void SetEncKey(const CKeyingMaterial& master_key);
-    void ClearEncKey();
     std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& GetMapCryptedKeys();
     std::map<CKeyID, CKey>& GetMapKeys();
     bool SetCrypted(); // Make this private again later

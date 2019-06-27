@@ -41,17 +41,82 @@ bool LegacyScriptPubKeyMan::IsLocked() const
 
 bool LegacyScriptPubKeyMan::Lock()
 {
-    return false;
+    if (!SetCrypted())
+        return false;
+
+    {
+        LOCK(cs_KeyStore);
+        vMasterKey.clear();
+    }
+
+    return true;
 }
 
 bool LegacyScriptPubKeyMan::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
 {
-    return false;
+    {
+        LOCK(cs_KeyStore);
+        if (!SetCrypted())
+            return false;
+
+        bool keyPass = mapCryptedKeys.empty(); // Always pass when there are no encrypted keys
+        bool keyFail = false;
+        CryptedKeyMap::const_iterator mi = mapCryptedKeys.begin();
+        for (; mi != mapCryptedKeys.end(); ++mi)
+        {
+            const CPubKey &vchPubKey = (*mi).second.first;
+            const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
+            CKey key;
+            if (!DecryptKey(vMasterKeyIn, vchCryptedSecret, vchPubKey, key))
+            {
+                keyFail = true;
+                break;
+            }
+            keyPass = true;
+            if (fDecryptionThoroughlyChecked)
+                break;
+        }
+        if (keyPass && keyFail)
+        {
+            LogPrintf("The wallet is probably corrupted: Some keys decrypt but not all.\n");
+            throw std::runtime_error("Error unlocking wallet: some keys decrypt but not all. Your wallet file may be corrupt.");
+        }
+        if (keyFail || (!keyPass && !accept_no_keys))
+            return false;
+        vMasterKey = vMasterKeyIn;
+        fDecryptionThoroughlyChecked = true;
+    }
+    return true;
 }
 
 bool LegacyScriptPubKeyMan::Encrypt(CKeyingMaterial& vMasterKeyIn, WalletBatch* batch)
 {
-    return false;
+    LOCK(cs_KeyStore);
+    encrypted_batch = batch;
+    if (!mapCryptedKeys.empty() || IsCrypted()) {
+        encrypted_batch = nullptr;
+        return false;
+    }
+
+    fUseCrypto = true;
+    for (const KeyMap::value_type& mKey : mapKeys)
+    {
+        const CKey &key = mKey.second;
+        CPubKey vchPubKey = key.GetPubKey();
+        CKeyingMaterial vchSecret(key.begin(), key.end());
+        std::vector<unsigned char> vchCryptedSecret;
+        if (!EncryptSecret(vMasterKeyIn, vchSecret, vchPubKey.GetHash(), vchCryptedSecret)) {
+            encrypted_batch = nullptr;
+            return false;
+        }
+        if (!AddCryptedKey(vchPubKey, vchCryptedSecret)) {
+            encrypted_batch = nullptr;
+            return false;
+        }
+    }
+    mapKeys.clear();
+    encrypted_batch = nullptr;
+    return true;
 }
 
 bool LegacyScriptPubKeyMan::GetReservedDestination(const OutputType type, bool internal, CTxDestination& address, int64_t& index, CKeyPool& keypool)
@@ -180,16 +245,6 @@ bool LegacyScriptPubKeyMan::AddCryptedKey(const CPubKey &vchPubKey, const std::v
 }
 
 // Temp functions, remove later
-void LegacyScriptPubKeyMan::SetEncKey(const CKeyingMaterial& master_key)
-{
-    vMasterKey = master_key;
-}
-
-void LegacyScriptPubKeyMan::ClearEncKey()
-{
-    vMasterKey.clear();
-}
-
 std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& LegacyScriptPubKeyMan::GetMapCryptedKeys()
 {
     LOCK(cs_KeyStore);
