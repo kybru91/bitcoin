@@ -221,6 +221,80 @@ uint256 LegacyScriptPubKeyMan::GetID() const
     return uint256S("0000000000000000000000000000000000000000000000000000000000000001");
 }
 
+bool LegacyScriptPubKeyMan::LoadKey(const CKey& key, const CPubKey &pubkey)
+{
+    return AddKeyPubKeyInner(key, pubkey);
+}
+
+bool LegacyScriptPubKeyMan::AddKeyPubKey(const CKey& secret, const CPubKey &pubkey)
+{
+    WalletBatch batch(*m_database);
+    return LegacyScriptPubKeyMan::AddKeyPubKeyWithDB(batch, secret, pubkey);
+}
+
+bool LegacyScriptPubKeyMan::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const CPubKey& pubkey)
+{
+    AssertLockHeld(cs_KeyStore);
+
+    // Make sure we aren't adding private keys to private key disabled wallets
+    assert(!IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
+
+    // FillableSigningProvider has no concept of wallet databases, but calls AddCryptedKey
+    // which is overridden below.  To avoid flushes, the database handle is
+    // tunneled through to it.
+    bool needsDB = !encrypted_batch;
+    if (needsDB) {
+        encrypted_batch = &batch;
+    }
+    if (!AddKeyPubKeyInner(secret, pubkey)) {
+        if (needsDB) encrypted_batch = nullptr;
+        return false;
+    }
+    if (needsDB) encrypted_batch = nullptr;
+
+    // check if we need to remove from watch-only
+    CScript script;
+    script = GetScriptForDestination(PKHash(pubkey));
+    if (HaveWatchOnly(script)) {
+        RemoveWatchOnly(script);
+    }
+    script = GetScriptForRawPubKey(pubkey);
+    if (HaveWatchOnly(script)) {
+        RemoveWatchOnly(script);
+    }
+
+    if (!IsCrypted()) {
+        return batch.WriteKey(pubkey,
+                                                 secret.GetPrivKey(),
+                                                 mapKeyMetadata[pubkey.GetID()]);
+    }
+    UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
+    return true;
+}
+
+bool LegacyScriptPubKeyMan::AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey)
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::AddKeyPubKey(key, pubkey);
+    }
+
+    if (IsLocked()) {
+        return false;
+    }
+
+    std::vector<unsigned char> vchCryptedSecret;
+    CKeyingMaterial vchSecret(key.begin(), key.end());
+    if (!EncryptSecret(vMasterKey, vchSecret, pubkey.GetHash(), vchCryptedSecret)) {
+        return false;
+    }
+
+    if (!AddCryptedKey(pubkey, vchCryptedSecret)) {
+        return false;
+    }
+    return true;
+}
+
 bool LegacyScriptPubKeyMan::LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
 {
     return AddCryptedKeyInner(vchPubKey, vchCryptedSecret);
@@ -380,6 +454,52 @@ bool LegacyScriptPubKeyMan::GetWatchPubKey(const CKeyID &address, CPubKey &pubke
     return false;
 }
 
+bool LegacyScriptPubKeyMan::HaveKey(const CKeyID &address) const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::HaveKey(address);
+    }
+    return mapCryptedKeys.count(address) > 0;
+}
+
+bool LegacyScriptPubKeyMan::GetKey(const CKeyID &address, CKey& keyOut) const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        return FillableSigningProvider::GetKey(address, keyOut);
+    }
+
+    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
+    if (mi != mapCryptedKeys.end())
+    {
+        const CPubKey &vchPubKey = (*mi).second.first;
+        const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
+        return DecryptKey(vMasterKey, vchCryptedSecret, vchPubKey, keyOut);
+    }
+    return false;
+}
+
+bool LegacyScriptPubKeyMan::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
+{
+    LOCK(cs_KeyStore);
+    if (!IsCrypted()) {
+        if (!FillableSigningProvider::GetPubKey(address, vchPubKeyOut)) {
+            return GetWatchPubKey(address, vchPubKeyOut);
+        }
+        return true;
+    }
+
+    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
+    if (mi != mapCryptedKeys.end())
+    {
+        vchPubKeyOut = (*mi).second.first;
+        return true;
+    }
+    // Check for watch-only pubkeys
+    return GetWatchPubKey(address, vchPubKeyOut);
+}
+
 // Temp functions, remove later
 std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& LegacyScriptPubKeyMan::GetMapCryptedKeys()
 {
@@ -391,18 +511,6 @@ std::map<CKeyID, CKey>& LegacyScriptPubKeyMan::GetMapKeys()
 {
     LOCK(cs_KeyStore);
     return mapKeys;
-}
-
-void LegacyScriptPubKeyMan::SetEncryptedBatch(WalletBatch* batch)
-{
-    LOCK(cs_KeyStore);
-    encrypted_batch = batch;
-}
-
-void LegacyScriptPubKeyMan::UnsetEncryptedBatch()
-{
-    LOCK(cs_KeyStore);
-    encrypted_batch = nullptr;
 }
 
 void LegacyScriptPubKeyMan::AddKeyMeta(CKeyID id, const CKeyMetadata& meta)

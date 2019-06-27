@@ -358,46 +358,13 @@ bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const C
 {
     AssertLockHeld(cs_wallet);
 
-    // Make sure we aren't adding private keys to private key disabled wallets
-    assert(!IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
-
-    // FillableSigningProvider has no concept of wallet databases, but calls AddCryptedKey
-    // which is overridden below.  To avoid flushes, the database handle is
-    // tunneled through to it.
-    bool needsDB = !encrypted_batch;
-    if (needsDB) {
-        encrypted_batch = &batch;
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        LOCK(legacy_spk_man->cs_KeyStore);
+        legacy_spk_man->AddKeyMeta(pubkey.GetID(), mapKeyMetadata[pubkey.GetID()]);
+        return legacy_spk_man->AddKeyPubKeyWithDB(batch, secret, pubkey);
     }
-    if (!AddKeyPubKeyInner(secret, pubkey)) {
-        if (needsDB) encrypted_batch = nullptr;
-        return false;
-    }
-    if (needsDB) encrypted_batch = nullptr;
-
-    // check if we need to remove from watch-only
-    CScript script;
-    script = GetScriptForDestination(PKHash(pubkey));
-    if (HaveWatchOnly(script)) {
-        RemoveWatchOnly(script);
-    }
-    script = GetScriptForRawPubKey(pubkey);
-    if (HaveWatchOnly(script)) {
-        RemoveWatchOnly(script);
-    }
-
-    if (!IsCrypted()) {
-        return batch.WriteKey(pubkey,
-                                                 secret.GetPrivKey(),
-                                                 mapKeyMetadata[pubkey.GetID()]);
-    }
-    UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
-    return true;
-}
-
-bool CWallet::AddKeyPubKey(const CKey& secret, const CPubKey &pubkey)
-{
-    WalletBatch batch(*database);
-    return CWallet::AddKeyPubKeyWithDB(batch, secret, pubkey);
+    return false;
 }
 
 bool CWallet::AddCryptedKey(const CPubKey &vchPubKey,
@@ -854,20 +821,18 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
 
         encrypted_batch->WriteMasterKey(nMasterKeyMaxID, kMasterKey);
 
-        auto legacy_spk_man = GetLegacyScriptPubKeyMan();
-        if (!legacy_spk_man) {
-            assert(false); // This shouldn't happen
-        }
-        legacy_spk_man->SetEncryptedBatch(encrypted_batch);
+        SetCrypted();
 
-        if (!EncryptKeys(_vMasterKey))
-        {
-            encrypted_batch->TxnAbort();
-            delete encrypted_batch;
-            encrypted_batch = nullptr;
-            // We now probably have half of our keys encrypted in memory, and half not...
-            // die and let the user reload the unencrypted wallet.
-            assert(false);
+        for (auto spk_man_pair : m_spk_managers) {
+            auto spk_man = spk_man_pair.second;
+            if (!spk_man->Encrypt(_vMasterKey, encrypted_batch)) {
+                encrypted_batch->TxnAbort();
+                delete encrypted_batch;
+                encrypted_batch = nullptr;
+                // We now probably have half of our keys encrypted in memory, and half not...
+                // die and let the user reload the unencrypted wallet.
+                assert(false);
+            }
         }
 
         // Encryption was introduced in version 0.4.0
@@ -883,7 +848,6 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
 
         delete encrypted_batch;
         encrypted_batch = nullptr;
-        legacy_spk_man->UnsetEncryptedBatch();
 
         Lock();
         Unlock(strWalletPassphrase);
@@ -1603,7 +1567,8 @@ CPubKey CWallet::DeriveNewSeed(const CKey& key)
         mapKeyMetadata[seed.GetID()] = metadata;
 
         // write the key&metadata to the database
-        if (!AddKeyPubKey(key, seed))
+        WalletBatch batch(*database);
+        if (!AddKeyPubKeyWithDB(batch, key, seed))
             throw std::runtime_error(std::string(__func__) + ": AddKeyPubKey failed");
     }
 
@@ -3318,12 +3283,12 @@ DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
         LOCK(cs_KeyStore);
         auto legacy_spk_man = GetLegacyScriptPubKeyMan();
         if (legacy_spk_man) {
-            fFirstRunRet = legacy_spk_man->GetMapCryptedKeys().empty();
+            fFirstRunRet = legacy_spk_man->GetMapKeys().empty() && legacy_spk_man->GetMapCryptedKeys().empty();
         } else {
             assert(false); // Should not happen, remove later
         }
         // This wallet is in its first run if all of these are empty
-        fFirstRunRet &= mapKeys.empty() && mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty()
+        fFirstRunRet &= mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty()
             && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET);
     }
 
@@ -4353,7 +4318,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         return NULL;
     } else if (walletInstance->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         LOCK(walletInstance->cs_KeyStore);
-        if (!walletInstance->mapKeys.empty() || !legacy_spk_man->GetMapCryptedKeys().empty()) {
+        if (!legacy_spk_man->GetMapKeys().empty() || !legacy_spk_man->GetMapCryptedKeys().empty()) {
             chain.initWarning(strprintf(_("Warning: Private keys detected in wallet {%s} with disabled private keys").translated, walletFile));
         }
     }
@@ -4768,46 +4733,31 @@ bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
 
 bool CWallet::HaveKey(const CKeyID &address) const
 {
-    LOCK(cs_KeyStore);
-    if (!IsCrypted()) {
-        return FillableSigningProvider::HaveKey(address);
+    LOCK(cs_wallet);
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->HaveKey(address);
+        }
     }
-
-    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
-    if (!legacy_spk_man) {
-        return false;
-    }
-    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
-
-    return mapCryptedKeys.count(address) > 0;
+    return false;
 }
 
 bool CWallet::GetKey(const CKeyID &address, CKey& keyOut) const
 {
-    LOCK(cs_KeyStore);
-    if (!IsCrypted()) {
-        return FillableSigningProvider::GetKey(address, keyOut);
-    }
-
-    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
-    if (!legacy_spk_man) {
-        return false;
-    }
-    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
-
-    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
-    if (mi != mapCryptedKeys.end())
-    {
-        const CPubKey &vchPubKey = (*mi).second.first;
-        const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-        return DecryptKey(vMasterKey, vchCryptedSecret, vchPubKey, keyOut);
+    LOCK(cs_wallet);
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->GetKey(address, keyOut);
+        }
     }
     return false;
 }
 
 bool CWallet::GetWatchPubKey(const CKeyID &address, CPubKey &pubkey_out) const
 {
-    LOCK(cs_KeyStore);
+    LOCK(cs_wallet);
     if (m_internal_spk_managers.count(OutputType::LEGACY)) {
         auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
         if (legacy_spk_man) {
@@ -4819,101 +4769,26 @@ bool CWallet::GetWatchPubKey(const CKeyID &address, CPubKey &pubkey_out) const
 
 bool CWallet::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
 {
-    LOCK(cs_KeyStore);
-    if (!IsCrypted()) {
-        if (!FillableSigningProvider::GetPubKey(address, vchPubKeyOut)) {
-            return GetWatchPubKey(address, vchPubKeyOut);
+    LOCK(cs_wallet);
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->GetPubKey(address, vchPubKeyOut);
         }
-        return true;
     }
-
-    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
-    if (!legacy_spk_man) {
-        return false;
-    }
-    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
-
-    CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
-    if (mi != mapCryptedKeys.end())
-    {
-        vchPubKeyOut = (*mi).second.first;
-        return true;
-    }
-    // Check for watch-only pubkeys
-    return GetWatchPubKey(address, vchPubKeyOut);
+    return false;
 }
 
 std::set<CKeyID> CWallet::GetKeys() const
 {
-    LOCK(cs_KeyStore);
-    if (!IsCrypted()) {
-        return FillableSigningProvider::GetKeys();
+    LOCK(cs_wallet);
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->GetKeys();
+        }
     }
-    std::set<CKeyID> set_address;
-
-    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
-    if (!legacy_spk_man) {
-        return set_address;
-    }
-    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
-
-    for (const auto& mi : mapCryptedKeys) {
-        set_address.insert(mi.first);
-    }
-    return set_address;
-}
-
-bool CWallet::EncryptKeys(CKeyingMaterial& vMasterKeyIn)
-{
-    LOCK(cs_KeyStore);
-
-    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
-    if (!legacy_spk_man) {
-        return false;
-    }
-    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
-
-    if (!mapCryptedKeys.empty() || IsCrypted())
-        return false;
-
-    fUseCrypto = true;
-    for (const KeyMap::value_type& mKey : mapKeys)
-    {
-        const CKey &key = mKey.second;
-        CPubKey vchPubKey = key.GetPubKey();
-        CKeyingMaterial vchSecret(key.begin(), key.end());
-        std::vector<unsigned char> vchCryptedSecret;
-        if (!EncryptSecret(vMasterKeyIn, vchSecret, vchPubKey.GetHash(), vchCryptedSecret))
-            return false;
-        if (!AddCryptedKey(vchPubKey, vchCryptedSecret))
-            return false;
-    }
-    mapKeys.clear();
-    SetCrypted();
-    return true;
-}
-
-bool CWallet::AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey)
-{
-    LOCK(cs_KeyStore);
-    if (!IsCrypted()) {
-        return FillableSigningProvider::AddKeyPubKey(key, pubkey);
-    }
-
-    if (IsLocked()) {
-        return false;
-    }
-
-    std::vector<unsigned char> vchCryptedSecret;
-    CKeyingMaterial vchSecret(key.begin(), key.end());
-    if (!EncryptSecret(vMasterKey, vchSecret, pubkey.GetHash(), vchCryptedSecret)) {
-        return false;
-    }
-
-    if (!AddCryptedKey(pubkey, vchCryptedSecret)) {
-        return false;
-    }
-    return true;
+    return std::set<CKeyID>();
 }
 
 std::set<std::shared_ptr<ScriptPubKeyMan>> CWallet::GetActiveScriptPubKeyMans() const

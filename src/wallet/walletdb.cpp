@@ -317,9 +317,13 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                 strErr = "Error reading wallet database: CPrivKey corrupt";
                 return false;
             }
-            if (!pwallet->LoadKey(key, vchPubKey))
-            {
-                strErr = "Error reading wallet database: LoadKey failed";
+            if (legacy_spk_man) {
+                if (!legacy_spk_man->LoadKey(key, vchPubKey)) {
+                    strErr = "Error reading wallet database: LegacyScriptPubKeyMan::LoadKey failed";
+                    return false;
+                }
+            } else {
+                strErr = "Error: Found normal key in wallet without LegacyScriptPubKeyMan";
                 return false;
             }
         } else if (strType == DBKeys::MASTER_KEY) {

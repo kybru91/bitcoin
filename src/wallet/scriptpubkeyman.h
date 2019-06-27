@@ -138,6 +138,7 @@ private:
 
     int64_t nTimeFirstKey GUARDED_BY(cs_KeyStore) = 0;
 
+    bool AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey);
     bool AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
 
     /**
@@ -211,6 +212,10 @@ public:
     // Map from Script ID to key metadata (for watch-only keys).
     std::map<CScriptID, CKeyMetadata> m_script_metadata GUARDED_BY(cs_KeyStore);
 
+    //! Adds a key to the store, and saves it to disk.
+    bool AddKeyPubKey(const CKey& key, const CPubKey &pubkey) override EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+    //! Adds a key to the store, without saving it to disk (used by LoadWallet)
+    bool LoadKey(const CKey& key, const CPubKey &pubkey);
     //! Adds an encrypted key to the store, and saves it to disk.
     bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     //! Adds an encrypted key to the store, without saving it to disk (used by LoadWallet)
@@ -235,13 +240,18 @@ public:
     //! Fetches a pubkey from mapWatchKeys if it exists there
     bool GetWatchPubKey(const CKeyID &address, CPubKey &pubkey_out) const;
 
+    /* SigningProvider overrides */
+    bool HaveKey(const CKeyID &address) const override;
+    bool GetKey(const CKeyID &address, CKey& keyOut) const override;
+    bool GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const override;
+
     // Temp functions to make the integration with CWallet work. will remove later
     std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& GetMapCryptedKeys();
     std::map<CKeyID, CKey>& GetMapKeys();
     bool SetCrypted(); // Make this private again later
-    void SetEncryptedBatch(WalletBatch* batch);
-    void UnsetEncryptedBatch();
     void AddKeyMeta(CKeyID id, const CKeyMetadata& meta);
+    //! Adds a key to the store, and saves it to disk. Make private later
+    bool AddKeyPubKeyWithDB(WalletBatch &batch,const CKey& key, const CPubKey &pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 };
 
 /** Wraps a LegacyScriptPubKeyMan so that it can be returned in a new unique_ptr */
