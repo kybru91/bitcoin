@@ -10,6 +10,7 @@
 #include <script/signingprovider.h>
 #include <script/standard.h>
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,8 @@ enum class OutputType {
      */
     CHANGE_AUTO,
 };
+
+const std::array<OutputType, 3> output_types = {OutputType::LEGACY, OutputType::P2SH_SEGWIT, OutputType::BECH32};
 
 NODISCARD bool ParseOutputType(const std::string& str, OutputType& output_type);
 const std::string& FormatOutputType(OutputType type);
