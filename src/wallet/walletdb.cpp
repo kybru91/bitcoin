@@ -338,9 +338,14 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssValue >> vchPrivKey;
             wss.nCKeys++;
 
-            if (!pwallet->LoadCryptedKey(vchPubKey, vchPrivKey))
-            {
-                strErr = "Error reading wallet database: LoadCryptedKey failed";
+            pwallet->SetCrypted();
+            if (legacy_spk_man) {
+                if (!legacy_spk_man->LoadCryptedKey(vchPubKey, vchPrivKey)) {
+                    strErr = "Error reading wallet database: LegacyScriptPubKeyMan::LoadCryptedKey failed";
+                    return false;
+                }
+            } else {
+                strErr = "Error: Found crypted key in wallet without LegacyScriptPubKeyMan";
                 return false;
             }
             wss.fIsEncrypted = true;

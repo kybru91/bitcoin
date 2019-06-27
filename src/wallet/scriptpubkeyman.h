@@ -129,6 +129,8 @@ private:
 
     WalletBatch *encrypted_batch GUARDED_BY(cs_wallet) = nullptr;
 
+    bool AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
+
 public:
     LegacyScriptPubKeyMan(FlagSetFunc is_set_func, FlagFuncWithDB unset_flag_func, NameFunc wallet_name_func, VersionFunc feature_sup_func, SetVersionFunc set_version_func, std::shared_ptr<WalletDatabase> database)
         :   ScriptPubKeyMan(is_set_func, unset_flag_func, wallet_name_func, database),
@@ -180,6 +182,14 @@ public:
     bool CanProvide(const CScript& script, SignatureData& sigdata) override;
 
     uint256 GetID() const override;
+
+    // Map from Key ID to key metadata.
+    std::map<CKeyID, CKeyMetadata> mapKeyMetadata GUARDED_BY(cs_KeyStore);
+
+    //! Adds an encrypted key to the store, and saves it to disk.
+    bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
+    //! Adds an encrypted key to the store, without saving it to disk (used by LoadWallet)
+    bool LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
 
     // Temp functions to make the integration with CWallet work. will remove later
     void SetEncKey(const CKeyingMaterial& master_key);

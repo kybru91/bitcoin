@@ -403,19 +403,11 @@ bool CWallet::AddKeyPubKey(const CKey& secret, const CPubKey &pubkey)
 bool CWallet::AddCryptedKey(const CPubKey &vchPubKey,
                             const std::vector<unsigned char> &vchCryptedSecret)
 {
-    if (!AddCryptedKeyInner(vchPubKey, vchCryptedSecret))
-        return false;
-    {
-        LOCK(cs_wallet);
-        if (encrypted_batch)
-            return encrypted_batch->WriteCryptedKey(vchPubKey,
-                                                        vchCryptedSecret,
-                                                        mapKeyMetadata[vchPubKey.GetID()]);
-        else
-            return WalletBatch(*database).WriteCryptedKey(vchPubKey,
-                                                            vchCryptedSecret,
-                                                            mapKeyMetadata[vchPubKey.GetID()]);
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        return legacy_spk_man->AddCryptedKey(vchPubKey, vchCryptedSecret);
     }
+    return false;
 }
 
 void CWallet::LoadKeyMetadata(const CKeyID& keyID, const CKeyMetadata& meta)
@@ -467,11 +459,6 @@ void CWallet::UpgradeKeyMetadata()
     }
     batch.reset(); //write before setting the flag
     SetWalletFlag(WALLET_FLAG_KEY_ORIGIN_METADATA);
-}
-
-bool CWallet::LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
-{
-    return AddCryptedKeyInner(vchPubKey, vchCryptedSecret);
 }
 
 /**
@@ -897,6 +884,13 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
             encrypted_batch = nullptr;
             return false;
         }
+
+        auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+        if (!legacy_spk_man) {
+            assert(false); // This shouldn't happen
+        }
+        legacy_spk_man->SetEncryptedBatch(encrypted_batch);
+
         encrypted_batch->WriteMasterKey(nMasterKeyMaxID, kMasterKey);
 
         if (!EncryptKeys(_vMasterKey))
@@ -922,6 +916,7 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
 
         delete encrypted_batch;
         encrypted_batch = nullptr;
+        legacy_spk_man->UnsetEncryptedBatch();
 
         Lock();
         Unlock(strWalletPassphrase);
@@ -3354,8 +3349,14 @@ DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
 
     {
         LOCK(cs_KeyStore);
+        auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+        if (legacy_spk_man) {
+            fFirstRunRet = legacy_spk_man->GetMapCryptedKeys().empty();
+        } else {
+            assert(false); // Should not happen, remove later
+        }
         // This wallet is in its first run if all of these are empty
-        fFirstRunRet = mapKeys.empty() && mapCryptedKeys.empty() && mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty()
+        fFirstRunRet &= mapKeys.empty() && mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty()
             && !IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET);
     }
 
@@ -4385,7 +4386,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         return NULL;
     } else if (walletInstance->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
         LOCK(walletInstance->cs_KeyStore);
-        if (!walletInstance->mapKeys.empty() || !walletInstance->mapCryptedKeys.empty()) {
+        if (!walletInstance->mapKeys.empty() || !legacy_spk_man->GetMapCryptedKeys().empty()) {
             chain.initWarning(strprintf(_("Warning: Private keys detected in wallet {%s} with disabled private keys").translated, walletFile));
         }
     }
@@ -4789,7 +4790,7 @@ bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
         if (!legacy_spk_man) {
             return false;
         }
-        auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+        auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
 
         bool keyPass = mapCryptedKeys.empty(); // Always pass when there are no encrypted keys
         bool keyFail = false;
@@ -4834,7 +4835,7 @@ bool CWallet::HaveKey(const CKeyID &address) const
     if (!legacy_spk_man) {
         return false;
     }
-    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
 
     return mapCryptedKeys.count(address) > 0;
 }
@@ -4850,7 +4851,7 @@ bool CWallet::GetKey(const CKeyID &address, CKey& keyOut) const
     if (!legacy_spk_man) {
         return false;
     }
-    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
 
     CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
     if (mi != mapCryptedKeys.end())
@@ -4887,7 +4888,7 @@ bool CWallet::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
     if (!legacy_spk_man) {
         return false;
     }
-    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
 
     CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
     if (mi != mapCryptedKeys.end())
@@ -4911,7 +4912,7 @@ std::set<CKeyID> CWallet::GetKeys() const
     if (!legacy_spk_man) {
         return set_address;
     }
-    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
 
     for (const auto& mi : mapCryptedKeys) {
         set_address.insert(mi.first);
@@ -4927,7 +4928,7 @@ bool CWallet::EncryptKeys(CKeyingMaterial& vMasterKeyIn)
     if (!legacy_spk_man) {
         return false;
     }
-    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+    auto mapCryptedKeys = legacy_spk_man->GetMapCryptedKeys();
 
     if (!mapCryptedKeys.empty() || IsCrypted())
         return false;
@@ -4969,19 +4970,6 @@ bool CWallet::AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey)
     if (!AddCryptedKey(pubkey, vchCryptedSecret)) {
         return false;
     }
-    return true;
-}
-
-
-bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
-{
-    LOCK(cs_KeyStore);
-    if (!SetCrypted()) {
-        return false;
-    }
-
-    mapCryptedKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
-    ImplicitlyLearnRelatedKeyScripts(vchPubKey);
     return true;
 }
 

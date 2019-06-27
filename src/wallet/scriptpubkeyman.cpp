@@ -145,6 +145,40 @@ uint256 LegacyScriptPubKeyMan::GetID() const
     return uint256S("0000000000000000000000000000000000000000000000000000000000000001");
 }
 
+bool LegacyScriptPubKeyMan::LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
+{
+    return AddCryptedKeyInner(vchPubKey, vchCryptedSecret);
+}
+
+bool LegacyScriptPubKeyMan::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
+{
+    LOCK(cs_KeyStore);
+    if (!SetCrypted()) {
+        return false;
+    }
+
+    mapCryptedKeys[vchPubKey.GetID()] = make_pair(vchPubKey, vchCryptedSecret);
+    ImplicitlyLearnRelatedKeyScripts(vchPubKey);
+    return true;
+}
+
+bool LegacyScriptPubKeyMan::AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
+{
+    if (!AddCryptedKeyInner(vchPubKey, vchCryptedSecret))
+        return false;
+    {
+        LOCK(cs_KeyStore);
+        if (encrypted_batch)
+            return encrypted_batch->WriteCryptedKey(vchPubKey,
+                                                        vchCryptedSecret,
+                                                        mapKeyMetadata[vchPubKey.GetID()]);
+        else
+            return WalletBatch(*m_database).WriteCryptedKey(vchPubKey,
+                                                            vchCryptedSecret,
+                                                            mapKeyMetadata[vchPubKey.GetID()]);
+    }
+}
+
 // Temp functions, remove later
 void LegacyScriptPubKeyMan::SetEncKey(const CKeyingMaterial& master_key)
 {

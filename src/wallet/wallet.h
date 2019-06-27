@@ -647,17 +647,13 @@ private:
     using WatchOnlySet = std::set<CScript>;
     using WatchKeyMap = std::map<CKeyID, CPubKey>;
 
-    bool SetCrypted();
-
     //! will encrypt previously unencrypted keys
     bool EncryptKeys(CKeyingMaterial& vMasterKeyIn);
 
     bool Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys = false);
-    CryptedKeyMap mapCryptedKeys GUARDED_BY(cs_KeyStore);
     WatchOnlySet setWatchOnly GUARDED_BY(cs_KeyStore);
     WatchKeyMap mapWatchKeys GUARDED_BY(cs_KeyStore);
 
-    bool AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     bool AddKeyPubKeyInner(const CKey& key, const CPubKey &pubkey);
 
     std::atomic<bool> fAbortRescan{false};
@@ -852,6 +848,7 @@ public:
         encrypted_batch = nullptr;
     }
 
+    bool SetCrypted();
     bool IsCrypted() const { return fUseCrypto; }
     bool IsLocked() const;
     bool Lock();
