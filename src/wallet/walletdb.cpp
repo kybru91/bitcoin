@@ -404,6 +404,12 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssValue >> keypool;
 
             pwallet->LoadKeyPool(nIndex, keypool);
+            if (legacy_spk_man) {
+                legacy_spk_man->LoadKeyPool(nIndex, keypool);
+            } else {
+                strErr = "Error: Found key metadata in wallet without LegacyScriptPubKeyMan";
+                return false;
+            }
         } else if (strType == DBKeys::CSCRIPT) {
             uint160 hash;
             ssKey >> hash;
