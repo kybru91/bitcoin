@@ -4746,6 +4746,12 @@ bool CWallet::SetCrypted()
     if (!mapKeys.empty())
         return false;
     fUseCrypto = true;
+
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        legacy_spk_man->SetCrypted();
+    }
+
     return true;
 }
 
@@ -4899,6 +4905,7 @@ bool CWallet::EncryptKeys(CKeyingMaterial& vMasterKeyIn)
             return false;
     }
     mapKeys.clear();
+    SetCrypted();
     return true;
 }
 

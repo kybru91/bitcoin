@@ -119,6 +119,10 @@ protected:
     SetVersionFunc SetMinVersion; // Function pointer to SetMinVersion in the wallet
 
 private:
+    //! if fUseCrypto is true, mapKeys must be empty
+    //! if fUseCrypto is false, vMasterKey must be empty
+    std::atomic<bool> fUseCrypto;
+
     CKeyingMaterial vMasterKey GUARDED_BY(cs_KeyStore);
 
     CryptedKeyMap mapCryptedKeys GUARDED_BY(cs_KeyStore);
@@ -129,7 +133,8 @@ public:
     LegacyScriptPubKeyMan(FlagSetFunc is_set_func, FlagFuncWithDB unset_flag_func, NameFunc wallet_name_func, VersionFunc feature_sup_func, SetVersionFunc set_version_func, std::shared_ptr<WalletDatabase> database)
         :   ScriptPubKeyMan(is_set_func, unset_flag_func, wallet_name_func, database),
             CanSupportFeature(feature_sup_func),
-            SetMinVersion(set_version_func)
+            SetMinVersion(set_version_func),
+            fUseCrypto(false)
         {}
 
     bool GetNewDestination(const OutputType type, CTxDestination& dest, std::string& error) override EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);

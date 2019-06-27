@@ -16,12 +16,27 @@ isminetype LegacyScriptPubKeyMan::IsMine(const CScript& script) const
 
 bool LegacyScriptPubKeyMan::IsCrypted() const
 {
-    return false;
+    return fUseCrypto;
+}
+
+bool LegacyScriptPubKeyMan::SetCrypted()
+{
+    LOCK(cs_KeyStore);
+    if (fUseCrypto)
+        return true;
+    if (!mapKeys.empty())
+        return false;
+    fUseCrypto = true;
+    return true;
 }
 
 bool LegacyScriptPubKeyMan::IsLocked() const
 {
-    return false;
+    if (!IsCrypted()) {
+        return false;
+    }
+    LOCK(cs_KeyStore);
+    return vMasterKey.empty();
 }
 
 bool LegacyScriptPubKeyMan::Lock()
