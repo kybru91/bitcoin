@@ -256,8 +256,17 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssKey >> script;
             char fYes;
             ssValue >> fYes;
-            if (fYes == '1')
-                pwallet->LoadWatchOnly(script);
+            if (fYes == '1') {
+                if (legacy_spk_man) {
+                    if (!legacy_spk_man->LoadWatchOnly(script)) {
+                        strErr = "Error reading wallet database: LegacyScriptPubKeyMan::LoadWatchOnly failed";
+                        return false;
+                    }
+                } else {
+                    strErr = "Error: Found watch only thing in wallet without LegacyScriptPubKeyMan";
+                    return false;
+                }
+            }
         } else if (strType == DBKeys::KEY) {
             CPubKey vchPubKey;
             ssKey >> vchPubKey;

@@ -523,87 +523,56 @@ static bool ExtractPubKey(const CScript &dest, CPubKey& pubKeyOut)
     return true;
 }
 
-bool CWallet::AddWatchOnlyInMem(const CScript &dest)
-{
-    LOCK(cs_KeyStore);
-    setWatchOnly.insert(dest);
-    CPubKey pubKey;
-    if (ExtractPubKey(dest, pubKey)) {
-        mapWatchKeys[pubKey.GetID()] = pubKey;
-        ImplicitlyLearnRelatedKeyScripts(pubKey);
-    }
-    return true;
-}
-
-bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest)
-{
-    if (!AddWatchOnlyInMem(dest))
-        return false;
-    const CKeyMetadata& meta = m_script_metadata[CScriptID(dest)];
-    UpdateTimeFirstKey(meta.nCreateTime);
-    NotifyWatchonlyChanged(true);
-    if (batch.WriteWatchOnly(dest, meta)) {
-        UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
-        return true;
-    }
-    return false;
-}
-
 bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest, int64_t create_time)
 {
     m_script_metadata[CScriptID(dest)].nCreateTime = create_time;
-    return AddWatchOnlyWithDB(batch, dest);
-}
-
-bool CWallet::AddWatchOnly(const CScript& dest)
-{
-    WalletBatch batch(*database);
-    return AddWatchOnlyWithDB(batch, dest);
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        return legacy_spk_man->AddWatchOnlyWithDB(batch, dest, create_time);
+    }
+    return false;
 }
 
 bool CWallet::AddWatchOnly(const CScript& dest, int64_t nCreateTime)
 {
     m_script_metadata[CScriptID(dest)].nCreateTime = nCreateTime;
-    return AddWatchOnly(dest);
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        return legacy_spk_man->AddWatchOnly(dest, nCreateTime);
+    }
+    return false;
 }
 
 bool CWallet::RemoveWatchOnly(const CScript &dest)
 {
     AssertLockHeld(cs_wallet);
-    {
-        LOCK(cs_KeyStore);
-        setWatchOnly.erase(dest);
-        CPubKey pubKey;
-        if (ExtractPubKey(dest, pubKey)) {
-            mapWatchKeys.erase(pubKey.GetID());
-        }
-        // Related CScripts are not removed; having superfluous scripts around is
-        // harmless (see comment in ImplicitlyLearnRelatedKeyScripts).
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (legacy_spk_man) {
+        return legacy_spk_man->RemoveWatchOnly(dest);
     }
-
-    if (!HaveWatchOnly())
-        NotifyWatchonlyChanged(false);
-    if (!WalletBatch(*database).EraseWatchOnly(dest))
-        return false;
-
-    return true;
-}
-
-bool CWallet::LoadWatchOnly(const CScript &dest)
-{
-    return AddWatchOnlyInMem(dest);
+    return false;
 }
 
 bool CWallet::HaveWatchOnly(const CScript &dest) const
 {
-    LOCK(cs_KeyStore);
-    return setWatchOnly.count(dest) > 0;
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->HaveWatchOnly(dest);
+        }
+    }
+    return false;
 }
 
 bool CWallet::HaveWatchOnly() const
 {
-    LOCK(cs_KeyStore);
-    return (!setWatchOnly.empty());
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->HaveWatchOnly();
+        }
+    }
+    return false;
 }
 
 bool CWallet::Unlock(const SecureString& strWalletPassphrase, bool accept_no_keys)
@@ -4839,10 +4808,11 @@ bool CWallet::GetKey(const CKeyID &address, CKey& keyOut) const
 bool CWallet::GetWatchPubKey(const CKeyID &address, CPubKey &pubkey_out) const
 {
     LOCK(cs_KeyStore);
-    WatchKeyMap::const_iterator it = mapWatchKeys.find(address);
-    if (it != mapWatchKeys.end()) {
-        pubkey_out = it->second;
-        return true;
+    if (m_internal_spk_managers.count(OutputType::LEGACY)) {
+        auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+        if (legacy_spk_man) {
+            return legacy_spk_man->GetWatchPubKey(address, pubkey_out);
+        }
     }
     return false;
 }
