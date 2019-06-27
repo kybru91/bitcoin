@@ -296,7 +296,7 @@ public:
     bool HavePrivateKeys() const override;
 
     int64_t GetOldestKeyPoolTime() override;
-    size_t KeypoolCountExternalKeys() override EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
+    size_t KeypoolCountExternalKeys() override;
     unsigned int GetKeypoolSize() const override;
 
     int64_t GetTimeFirstKey() const override;
