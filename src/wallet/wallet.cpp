@@ -57,6 +57,7 @@ bool AddWallet(const std::shared_ptr<CWallet>& wallet)
     std::vector<std::shared_ptr<CWallet>>::const_iterator i = std::find(vpwallets.begin(), vpwallets.end(), wallet);
     if (i != vpwallets.end()) return false;
     vpwallets.push_back(wallet);
+    wallet->ConnectScriptPubKeyManNotifiers();
     return true;
 }
 
@@ -5032,4 +5033,12 @@ void CWallet::SetupLegacyScriptPubKeyMan()
     assert(m_external_spk_managers.at(OutputType::P2SH_SEGWIT) == spk_man);
     assert(m_external_spk_managers.at(OutputType::BECH32) == spk_man);
     assert(m_spk_managers.size() == 1);
+}
+
+void CWallet::ConnectScriptPubKeyManNotifiers()
+{
+    for (auto spk_man_pair : m_spk_managers) {
+        spk_man_pair.second->NotifyWatchonlyChanged.connect(NotifyWatchonlyChanged);
+        spk_man_pair.second->NotifyCanGetAddressesChanged.connect(NotifyCanGetAddressesChanged);
+    }
 }
