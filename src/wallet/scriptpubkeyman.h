@@ -24,6 +24,8 @@ typedef std::function<bool(enum WalletFeature)> VersionFunc;
 typedef std::function<std::string()> NameFunc;
 typedef std::function<void(enum WalletFeature, WalletBatch*, bool)> SetVersionFunc;
 
+using CryptedKeyMap = std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>;
+
 class ScriptPubKeyMan
 {
 protected:
@@ -116,6 +118,13 @@ protected:
     VersionFunc CanSupportFeature; // Function pointer to function that indicates whether the feature is supported
     SetVersionFunc SetMinVersion; // Function pointer to SetMinVersion in the wallet
 
+private:
+    CKeyingMaterial vMasterKey GUARDED_BY(cs_KeyStore);
+
+    CryptedKeyMap mapCryptedKeys GUARDED_BY(cs_KeyStore);
+
+    WalletBatch *encrypted_batch GUARDED_BY(cs_wallet) = nullptr;
+
 public:
     LegacyScriptPubKeyMan(FlagSetFunc is_set_func, FlagFuncWithDB unset_flag_func, NameFunc wallet_name_func, VersionFunc feature_sup_func, SetVersionFunc set_version_func, std::shared_ptr<WalletDatabase> database)
         :   ScriptPubKeyMan(is_set_func, unset_flag_func, wallet_name_func, database),
@@ -166,6 +175,16 @@ public:
     bool CanProvide(const CScript& script, SignatureData& sigdata) override;
 
     uint256 GetID() const override;
+
+    // Temp functions to make the integration with CWallet work. will remove later
+    void SetEncKey(const CKeyingMaterial& master_key);
+    void ClearEncKey();
+    std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& GetMapCryptedKeys();
+    std::map<CKeyID, CKey>& GetMapKeys();
+    bool SetCrypted(); // Make this private again later
+    void SetEncryptedBatch(WalletBatch* batch);
+    void UnsetEncryptedBatch();
+    void AddKeyMeta(CKeyID id, const CKeyMetadata& meta);
 };
 
 /** Wraps a LegacyScriptPubKeyMan so that it can be returned in a new unique_ptr */

@@ -129,3 +129,44 @@ uint256 LegacyScriptPubKeyMan::GetID() const
 {
     return uint256S("0000000000000000000000000000000000000000000000000000000000000001");
 }
+
+// Temp functions, remove later
+void LegacyScriptPubKeyMan::SetEncKey(const CKeyingMaterial& master_key)
+{
+    vMasterKey = master_key;
+}
+
+void LegacyScriptPubKeyMan::ClearEncKey()
+{
+    vMasterKey.clear();
+}
+
+std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>& LegacyScriptPubKeyMan::GetMapCryptedKeys()
+{
+    LOCK(cs_KeyStore);
+    return mapCryptedKeys;
+}
+
+std::map<CKeyID, CKey>& LegacyScriptPubKeyMan::GetMapKeys()
+{
+    LOCK(cs_KeyStore);
+    return mapKeys;
+}
+
+void LegacyScriptPubKeyMan::SetEncryptedBatch(WalletBatch* batch)
+{
+    LOCK(cs_KeyStore);
+    encrypted_batch = batch;
+}
+
+void LegacyScriptPubKeyMan::UnsetEncryptedBatch()
+{
+    LOCK(cs_KeyStore);
+    encrypted_batch = nullptr;
+}
+
+void LegacyScriptPubKeyMan::AddKeyMeta(CKeyID id, const CKeyMetadata& meta)
+{
+    LOCK(cs_KeyStore);
+    mapKeyMetadata[id] = meta;
+}
