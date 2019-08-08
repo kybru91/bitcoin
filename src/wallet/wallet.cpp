@@ -4785,6 +4785,12 @@ bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
         if (!SetCrypted())
             return false;
 
+        auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+        if (!legacy_spk_man) {
+            return false;
+        }
+        auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+
         bool keyPass = mapCryptedKeys.empty(); // Always pass when there are no encrypted keys
         bool keyFail = false;
         CryptedKeyMap::const_iterator mi = mapCryptedKeys.begin();
@@ -4810,6 +4816,7 @@ bool CWallet::Unlock(const CKeyingMaterial& vMasterKeyIn, bool accept_no_keys)
         if (keyFail || (!keyPass && !accept_no_keys))
             return false;
         vMasterKey = vMasterKeyIn;
+        legacy_spk_man->SetEncKey(vMasterKeyIn);
         fDecryptionThoroughlyChecked = true;
     }
     NotifyStatusChanged(this);
@@ -4822,6 +4829,13 @@ bool CWallet::HaveKey(const CKeyID &address) const
     if (!IsCrypted()) {
         return FillableSigningProvider::HaveKey(address);
     }
+
+    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+    if (!legacy_spk_man) {
+        return false;
+    }
+    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+
     return mapCryptedKeys.count(address) > 0;
 }
 
@@ -4831,6 +4845,12 @@ bool CWallet::GetKey(const CKeyID &address, CKey& keyOut) const
     if (!IsCrypted()) {
         return FillableSigningProvider::GetKey(address, keyOut);
     }
+
+    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+    if (!legacy_spk_man) {
+        return false;
+    }
+    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
 
     CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
     if (mi != mapCryptedKeys.end())
@@ -4863,6 +4883,12 @@ bool CWallet::GetPubKey(const CKeyID &address, CPubKey& vchPubKeyOut) const
         return true;
     }
 
+    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+    if (!legacy_spk_man) {
+        return false;
+    }
+    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+
     CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
     if (mi != mapCryptedKeys.end())
     {
@@ -4880,6 +4906,13 @@ std::set<CKeyID> CWallet::GetKeys() const
         return FillableSigningProvider::GetKeys();
     }
     std::set<CKeyID> set_address;
+
+    auto legacy_spk_man = std::dynamic_pointer_cast<LegacyScriptPubKeyMan>(m_internal_spk_managers.at(OutputType::LEGACY));
+    if (!legacy_spk_man) {
+        return set_address;
+    }
+    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+
     for (const auto& mi : mapCryptedKeys) {
         set_address.insert(mi.first);
     }
@@ -4889,6 +4922,13 @@ std::set<CKeyID> CWallet::GetKeys() const
 bool CWallet::EncryptKeys(CKeyingMaterial& vMasterKeyIn)
 {
     LOCK(cs_KeyStore);
+
+    auto legacy_spk_man = GetLegacyScriptPubKeyMan();
+    if (!legacy_spk_man) {
+        return false;
+    }
+    auto map_crypted_keys = legacy_spk_man->GetMapCryptedKeys();
+
     if (!mapCryptedKeys.empty() || IsCrypted())
         return false;
 
