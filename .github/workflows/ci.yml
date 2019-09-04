@@ -1,0 +1,15 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+    lint:
+        name: lint
+        runs-on: ubuntu-18.04
+        steps:
+          - name: install
+            run: set -o errexit; source ci/lint/04_install.sh
+          - name: before_script
+            run: set -o errexit; source ./ci/lint/05_before_script.sh
+          - name: script
+            run: set -o errexit; source ./ci/lint/06_script.sh
