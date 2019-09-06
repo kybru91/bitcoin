@@ -321,6 +321,13 @@ u_int32_t BerkeleyBatch::SafeDbt::get_size() const
     return m_dbt.get_size();
 }
 
+void BerkeleyBatch::SafeDbt::set_partial(u_int32_t offset)
+{
+    m_dbt.set_doff(offset);
+    m_dbt.set_dlen(get_size());
+    m_dbt.set_flags(DB_DBT_PARTIAL | m_dbt.get_flags());
+}
+
 BerkeleyBatch::SafeDbt::operator Dbt*()
 {
     return &m_dbt;

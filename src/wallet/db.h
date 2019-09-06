@@ -217,6 +217,9 @@ class BerkeleyBatch
         const void* get_data() const;
         u_int32_t get_size() const;
 
+        // For doing partial writes
+        void set_partial(u_int32_t offset);
+
         // conversion operator to access the underlying Dbt
         operator Dbt*();
     };
@@ -278,7 +281,7 @@ public:
     }
 
     template <typename K, typename T>
-    bool Write(const K& key, const T& value, bool fOverwrite = true)
+    bool Write(const K& key, const T& value, bool fOverwrite = true, size_t offset = 0)
     {
         if (!pdb)
             return true;
@@ -296,6 +299,9 @@ public:
         ssValue.reserve(10000);
         ssValue << value;
         SafeDbt datValue(ssValue.data(), ssValue.size());
+        if (offset > 0) {
+            datValue.set_partial(offset);
+        }
 
         // Write
         int ret = pdb->put(activeTxn, datKey, datValue, (fOverwrite ? 0 : DB_NOOVERWRITE));
