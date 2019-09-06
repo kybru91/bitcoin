@@ -179,9 +179,9 @@ class WalletBatch
 {
 private:
     template <typename K, typename T>
-    bool WriteIC(const K& key, const T& value, bool fOverwrite = true)
+    bool WriteIC(const K& key, const T& value, bool fOverwrite = true, size_t offset = 0)
     {
-        if (!m_batch.Write(key, value, fOverwrite)) {
+        if (!m_batch.Write(key, value, fOverwrite, offset)) {
             return false;
         }
         m_database.IncrementUpdateCounter();
