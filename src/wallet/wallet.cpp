@@ -2407,27 +2407,61 @@ void MaybeResendWalletTxs()
 CWallet::Balance CWallet::GetBalance(const int min_depth, bool avoid_reuse) const
 {
     Balance ret;
-    isminefilter reuse_filter = avoid_reuse ? ISMINE_NO : ISMINE_USED;
     {
         auto locked_chain = chain().lock();
         LOCK(cs_wallet);
-        for (const auto& entry : mapWallet)
+
+        std::map<uint256, std::tuple<int /* depth */, bool /* trusted */, bool/* mature coinbase */, bool /* in mempool */>> tx_info_cache;
+
+        for (const auto& output : m_map_utxos)
         {
-            const CWalletTx& wtx = entry.second;
-            const bool is_trusted{wtx.IsTrusted(*locked_chain)};
-            const int tx_depth{wtx.GetDepthInMainChain(*locked_chain)};
-            const CAmount tx_credit_mine{wtx.GetAvailableCredit(*locked_chain, /* fUseCache */ true, ISMINE_SPENDABLE | reuse_filter)};
-            const CAmount tx_credit_watchonly{wtx.GetAvailableCredit(*locked_chain, /* fUseCache */ true, ISMINE_WATCH_ONLY | reuse_filter)};
-            if (is_trusted && tx_depth >= min_depth) {
-                ret.m_mine_trusted += tx_credit_mine;
-                ret.m_watchonly_trusted += tx_credit_watchonly;
+            const uint256& wtxid = output.first.hash;
+            int i = output.first.n;
+            const CTxOut& txout = output.second;
+
+            int tx_depth = -1;
+            bool is_trusted = false;
+            bool is_mature = false;
+            bool in_mempool = false;
+
+            const auto& it = tx_info_cache.find(wtxid);
+            if (it == tx_info_cache.end()) {
+                const auto& wtx_it = mapWallet.find(wtxid);
+                if (wtx_it == mapWallet.end()) {
+                    continue;
+                }
+                const CWalletTx& wtx = wtx_it->second;
+
+                tx_depth = wtx.GetDepthInMainChain(*locked_chain);
+                is_trusted = wtx.IsTrusted(*locked_chain);
+                is_mature = !wtx.IsImmatureCoinBase(*locked_chain);
+                in_mempool = wtx.InMempool();
+                tx_info_cache.emplace(wtxid, std::make_tuple(tx_depth, is_trusted, is_mature, in_mempool));
+            } else {
+                tx_depth = std::get<0>(it->second);
+                is_trusted = std::get<1>(it->second);
+                is_mature = std::get<2>(it->second);
+                in_mempool = std::get<3>(it->second);
             }
-            if (!is_trusted && tx_depth == 0 && wtx.InMempool()) {
-                ret.m_mine_untrusted_pending += tx_credit_mine;
-                ret.m_watchonly_untrusted_pending += tx_credit_watchonly;
+
+            // Must wait until coinbase is safely deep enough in the chain before valuing it
+            if (!is_mature) {
+                ret.m_mine_immature += GetCredit(txout, ISMINE_SPENDABLE);
+                ret.m_watchonly_immature += GetCredit(txout, ISMINE_WATCH_ONLY);
+                continue;
             }
-            ret.m_mine_immature += wtx.GetImmatureCredit(*locked_chain);
-            ret.m_watchonly_immature += wtx.GetImmatureWatchOnlyCredit(*locked_chain);
+
+            bool allow_used_addresses = !avoid_reuse || !IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE);
+            if (!IsSpent(*locked_chain, wtxid, i) && (allow_used_addresses || !IsUsedDestination(wtxid, i))) {
+                if (is_trusted && tx_depth >= min_depth) {
+                    ret.m_mine_trusted += GetCredit(txout, ISMINE_SPENDABLE);
+                    ret.m_watchonly_trusted += GetCredit(txout, ISMINE_WATCH_ONLY);
+                }
+                if (!is_trusted && tx_depth == 0 && in_mempool) {
+                    ret.m_mine_untrusted_pending += GetCredit(txout, ISMINE_SPENDABLE);
+                    ret.m_watchonly_untrusted_pending += GetCredit(txout, ISMINE_WATCH_ONLY);
+                }
+            }
         }
     }
     return ret;
