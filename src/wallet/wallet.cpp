@@ -4949,3 +4949,10 @@ bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<uns
     ImplicitlyLearnRelatedKeyScripts(vchPubKey);
     return true;
 }
+
+void CWalletTx::LoadOutputsToWallet() const
+{
+    for (int i = 0; i < tx->vout.size(); ++i) {
+        pwallet->m_map_utxos.emplace(COutPoint(stx.txid, i), tx->vout.at(i));
+    }
+}

@@ -428,7 +428,7 @@ struct StrippedTx : CMutableTransaction
 class CWalletTx
 {
 private:
-    const CWallet* pwallet;
+    CWallet* pwallet;
 
     /** Constant used in hashBlock to indicate tx has been abandoned, only used at
      * serialization/deserialization to avoid ambiguity with conflicted.
@@ -495,13 +495,14 @@ public:
     mutable bool fInMempool;
     mutable CAmount nChangeCached;
 
-    CWalletTx(const CWallet* pwalletIn, CTransactionRef arg)
+    CWalletTx(CWallet* pwalletIn, CTransactionRef arg)
         : tx(arg), stx(arg)
     {
         Init(pwalletIn);
+        LoadOutputsToWallet();
     }
 
-    void Init(const CWallet* pwalletIn)
+    void Init(CWallet* pwalletIn)
     {
         pwallet = pwalletIn;
         mapValue.clear();
@@ -638,7 +639,10 @@ public:
     {
         pwallet = pwalletIn;
         MarkDirty();
+        LoadOutputsToWallet();
     }
+
+    void LoadOutputsToWallet() const;
 
     //! filter decides which addresses will count towards the debit
     CAmount GetDebit(const isminefilter& filter) const;
@@ -1004,6 +1008,7 @@ public:
     std::unique_ptr<interfaces::Chain::Lock> LockChain() { return m_chain ? m_chain->lock() : nullptr; }
 
     std::map<uint256, CWalletTx> mapWallet GUARDED_BY(cs_wallet);
+    std::map<COutPoint, CTxOut> m_map_utxos GUARDED_BY(cs_wallet);
 
     typedef std::multimap<int64_t, CWalletTx*> TxItems;
     TxItems wtxOrdered;
