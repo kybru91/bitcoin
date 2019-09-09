@@ -387,6 +387,40 @@ public:
 //Get the marginal bytes of spending the specified output
 int CalculateMaximumSignedInputSize(const CTxOut& txout, const CWallet* pwallet, bool use_max_sig = false);
 
+struct StrippedTx : CMutableTransaction
+{
+    size_t tx_size;
+    size_t num_txouts;
+    uint256 txid;
+
+    void StripTransaction()
+    {
+        for (CTxIn& txin : vin) {
+            txin.scriptSig.clear();
+            txin.scriptWitness.SetNull();
+        }
+        num_txouts = vout.size();
+        vout.clear();
+    }
+
+    template <typename Stream>
+    inline void Unserialize(Stream& s) {
+        UnserializeTransaction(*this, s);
+        StripTransaction();
+    }
+
+    StrippedTx(CTransactionRef tx)
+    {
+        vin = tx->vin;
+        vout = tx->vout;
+        nVersion = tx->nVersion;
+        nLockTime = tx->nLockTime;
+        txid = tx->GetHash();
+        tx_size = tx->GetTotalSize();
+        StripTransaction();
+    }
+};
+
 /**
  * A transaction with a bunch of additional info that only the owner cares about.
  * It includes any unrecorded transactions needed to link it back to the block chain.
@@ -450,6 +484,9 @@ public:
     int64_t nOrderPos; //!< position in ordered transaction list
     std::multimap<int64_t, CWalletTx*>::const_iterator m_it_wtxOrdered;
 
+    bool tx_written;
+    StrippedTx stx;
+
     // memory only
     enum AmountType { DEBIT, CREDIT, IMMATURE_CREDIT, AVAILABLE_CREDIT, AMOUNTTYPE_ENUM_ELEMENTS };
     CAmount GetCachableAmount(AmountType type, const isminefilter& filter, bool recalculate = false) const;
@@ -459,7 +496,7 @@ public:
     mutable CAmount nChangeCached;
 
     CWalletTx(const CWallet* pwalletIn, CTransactionRef arg)
-        : tx(std::move(arg))
+        : tx(arg), stx(arg)
     {
         Init(pwalletIn);
     }
@@ -478,6 +515,7 @@ public:
         nChangeCached = 0;
         nOrderPos = -1;
         m_confirm = Confirmation{};
+        tx_written = false;
     }
 
     CTransactionRef tx;
@@ -509,6 +547,7 @@ public:
 
     Confirmation m_confirm;
 
+    // tx_written must be updated by the caller after any time CWalletTx is serialized to the wallet db
     template<typename Stream>
     void Serialize(Stream& s) const
     {
@@ -525,7 +564,10 @@ public:
         bool dummy_bool = false; //!< Used to be fSpent
         uint256 serializedHash = isAbandoned() ? ABANDON_HASH : m_confirm.hashBlock;
         int serializedIndex = isAbandoned() || isConflicted() ? -1 : m_confirm.nIndex;
-        s << tx << serializedHash << dummy_vector1 << serializedIndex << dummy_vector2 << mapValueCopy << vOrderForm << fTimeReceivedIsTxTime << nTimeReceived << fFromMe << dummy_bool;
+        if (!tx_written) {
+            s << tx;
+        }
+        s << serializedHash << dummy_vector1 << serializedIndex << dummy_vector2 << mapValueCopy << vOrderForm << fTimeReceivedIsTxTime << nTimeReceived << fFromMe << dummy_bool;
     }
 
     template<typename Stream>
@@ -537,7 +579,16 @@ public:
         std::vector<CMerkleTx> dummy_vector2; //!< Used to be vtxPrev
         bool dummy_bool; //! Used to be fSpent
         int serializedIndex;
-        s >> tx >> m_confirm.hashBlock >> dummy_vector1 >> serializedIndex >> dummy_vector2 >> mapValue >> vOrderForm >> fTimeReceivedIsTxTime >> nTimeReceived >> fFromMe >> dummy_bool;
+
+        size_t before_tx = s.size();
+        s >> tx;
+        size_t after_tx = s.size();
+        s.Rewind(before_tx - after_tx);;
+        s >> stx;
+        stx.tx_size = before_tx - after_tx;
+        stx.txid = tx->GetHash();
+
+        s >> m_confirm.hashBlock >> dummy_vector1 >> serializedIndex >> dummy_vector2 >> mapValue >> vOrderForm >> fTimeReceivedIsTxTime >> nTimeReceived >> fFromMe >> dummy_bool;
 
         /* At serialization/deserialization, an nIndex == -1 means that hashBlock refers to
          * the earliest block in the chain we know this or any in-wallet ancestor conflicts
@@ -563,11 +614,14 @@ public:
         mapValue.erase("spent");
         mapValue.erase("n");
         mapValue.erase("timesmart");
+
+        tx_written = true;
     }
 
     void SetTx(CTransactionRef arg)
     {
         tx = std::move(arg);
+        tx_written = false;
     }
 
     //! make sure balances are recalculated
