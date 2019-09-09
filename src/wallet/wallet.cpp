@@ -2461,109 +2461,135 @@ void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<
     const int min_depth = {coinControl ? coinControl->m_min_depth : DEFAULT_MIN_DEPTH};
     const int max_depth = {coinControl ? coinControl->m_max_depth : DEFAULT_MAX_DEPTH};
 
-    for (const auto& entry : mapWallet)
+    std::set<uint256> checked_bad_txids;
+    std::map<uint256, std::pair<int, bool>> checked_good_txids;
+
+    for (const auto& output : m_map_utxos)
     {
-        const uint256& wtxid = entry.first;
-        const CWalletTx& wtx = entry.second;
+        const uint256& wtxid = output.first.hash;
+        int i = output.first.n;
+        const CTxOut& txout = output.second;
 
-        if (!locked_chain.checkFinalTx(*wtx.tx)) {
+        if (checked_bad_txids.count(wtxid) > 0) {
             continue;
         }
 
-        if (wtx.IsImmatureCoinBase(locked_chain))
-            continue;
-
-        int nDepth = wtx.GetDepthInMainChain(locked_chain);
-        if (nDepth < 0)
-            continue;
-
-        // We should not consider coins which aren't at least in our mempool
-        // It's possible for these to be conflicted via ancestors which we may never be able to detect
-        if (nDepth == 0 && !wtx.InMempool())
-            continue;
-
-        bool safeTx = wtx.IsTrusted(locked_chain);
-
-        // We should not consider coins from transactions that are replacing
-        // other transactions.
-        //
-        // Example: There is a transaction A which is replaced by bumpfee
-        // transaction B. In this case, we want to prevent creation of
-        // a transaction B' which spends an output of B.
-        //
-        // Reason: If transaction A were initially confirmed, transactions B
-        // and B' would no longer be valid, so the user would have to create
-        // a new transaction C to replace B'. However, in the case of a
-        // one-block reorg, transactions B' and C might BOTH be accepted,
-        // when the user only wanted one of them. Specifically, there could
-        // be a 1-block reorg away from the chain where transactions A and C
-        // were accepted to another chain where B, B', and C were all
-        // accepted.
-        if (nDepth == 0 && wtx.mapValue.count("replaces_txid")) {
-            safeTx = false;
-        }
-
-        // Similarly, we should not consider coins from transactions that
-        // have been replaced. In the example above, we would want to prevent
-        // creation of a transaction A' spending an output of A, because if
-        // transaction B were initially confirmed, conflicting with A and
-        // A', we wouldn't want to the user to create a transaction D
-        // intending to replace A', but potentially resulting in a scenario
-        // where A, A', and D could all be accepted (instead of just B and
-        // D, or just A and A' like the user would want).
-        if (nDepth == 0 && wtx.mapValue.count("replaced_by_txid")) {
-            safeTx = false;
-        }
-
-        if (fOnlySafe && !safeTx) {
+        const auto& wtx_it = mapWallet.find(wtxid);
+        if (wtx_it == mapWallet.end()) {
             continue;
         }
+        const CWalletTx& wtx = wtx_it->second;
 
-        if (nDepth < min_depth || nDepth > max_depth) {
-            continue;
-        }
+        int nDepth = -1;
+        bool safeTx = false;
 
-        for (unsigned int i = 0; i < wtx.tx->vout.size(); i++) {
-            if (wtx.tx->vout[i].nValue < nMinimumAmount || wtx.tx->vout[i].nValue > nMaximumAmount)
-                continue;
+        const auto& good_tx_it = checked_good_txids.find(wtxid);
+        if (good_tx_it == checked_good_txids.end()) {
+            checked_bad_txids.insert(wtxid);
 
-            if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs && !coinControl->IsSelected(COutPoint(entry.first, i)))
-                continue;
-
-            if (IsLockedCoin(entry.first, i))
-                continue;
-
-            if (IsSpent(locked_chain, wtxid, i))
-                continue;
-
-            isminetype mine = IsMine(wtx.tx->vout[i]);
-
-            if (mine == ISMINE_NO) {
+            if (!locked_chain.checkFinalTx(*wtx.tx)) {
                 continue;
             }
 
-            if (!allow_used_addresses && IsUsedDestination(wtxid, i)) {
+            if (wtx.IsImmatureCoinBase(locked_chain))
+                continue;
+
+            nDepth = wtx.GetDepthInMainChain(locked_chain);
+            if (nDepth < 0)
+                continue;
+
+            // We should not consider coins which aren't at least in our mempool
+            // It's possible for these to be conflicted via ancestors which we may never be able to detect
+            if (nDepth == 0 && !wtx.InMempool())
+                continue;
+
+            safeTx = wtx.IsTrusted(locked_chain);
+
+            // We should not consider coins from transactions that are replacing
+            // other transactions.
+            //
+            // Example: There is a transaction A which is replaced by bumpfee
+            // transaction B. In this case, we want to prevent creation of
+            // a transaction B' which spends an output of B.
+            //
+            // Reason: If transaction A were initially confirmed, transactions B
+            // and B' would no longer be valid, so the user would have to create
+            // a new transaction C to replace B'. However, in the case of a
+            // one-block reorg, transactions B' and C might BOTH be accepted,
+            // when the user only wanted one of them. Specifically, there could
+            // be a 1-block reorg away from the chain where transactions A and C
+            // were accepted to another chain where B, B', and C were all
+            // accepted.
+            if (nDepth == 0 && wtx.mapValue.count("replaces_txid")) {
+                safeTx = false;
+            }
+
+            // Similarly, we should not consider coins from transactions that
+            // have been replaced. In the example above, we would want to prevent
+            // creation of a transaction A' spending an output of A, because if
+            // transaction B were initially confirmed, conflicting with A and
+            // A', we wouldn't want to the user to create a transaction D
+            // intending to replace A', but potentially resulting in a scenario
+            // where A, A', and D could all be accepted (instead of just B and
+            // D, or just A and A' like the user would want).
+            if (nDepth == 0 && wtx.mapValue.count("replaced_by_txid")) {
+                safeTx = false;
+            }
+
+            if (fOnlySafe && !safeTx) {
                 continue;
             }
 
-            bool solvable = IsSolvable(*this, wtx.tx->vout[i].scriptPubKey);
-            bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
-
-            vCoins.push_back(COutput(&wtx, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
-
-            // Checks the sum amount of all UTXO's.
-            if (nMinimumSumAmount != MAX_MONEY) {
-                nTotal += wtx.tx->vout[i].nValue;
-
-                if (nTotal >= nMinimumSumAmount) {
-                    return;
-                }
+            if (nDepth < min_depth || nDepth > max_depth) {
+                continue;
             }
 
-            // Checks the maximum number of UTXO's.
-            if (nMaximumCount > 0 && vCoins.size() >= nMaximumCount) {
+            checked_bad_txids.erase(wtxid);
+            checked_good_txids.emplace(wtxid, std::make_pair(nDepth, safeTx));
+        } else {
+            nDepth = good_tx_it->second.first;
+            safeTx = good_tx_it->second.second;
+        }
+
+        if (txout.nValue < nMinimumAmount || txout.nValue > nMaximumAmount)
+            continue;
+
+        if (coinControl && coinControl->HasSelected() && !coinControl->fAllowOtherInputs && !coinControl->IsSelected(COutPoint(wtxid, i)))
+            continue;
+
+        if (IsLockedCoin(wtxid, i))
+            continue;
+
+        if (IsSpent(locked_chain, wtxid, i))
+            continue;
+
+        isminetype mine = IsMine(txout);
+
+        if (mine == ISMINE_NO) {
+            continue;
+        }
+
+        if (!allow_used_addresses && IsUsedDestination(wtxid, i)) {
+            continue;
+        }
+
+        bool solvable = IsSolvable(*this, txout.scriptPubKey);
+        bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
+
+        vCoins.push_back(COutput(&wtx, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
+
+        // Checks the sum amount of all UTXO's.
+        if (nMinimumSumAmount != MAX_MONEY) {
+            nTotal += txout.nValue;
+
+            if (nTotal >= nMinimumSumAmount) {
                 return;
             }
+        }
+
+        // Checks the maximum number of UTXO's.
+        if (nMaximumCount > 0 && vCoins.size() >= nMaximumCount) {
+            return;
         }
     }
 }
