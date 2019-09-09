@@ -3838,34 +3838,60 @@ std::map<CTxDestination, CAmount> CWallet::GetAddressBalances(interfaces::Chain:
 
     {
         LOCK(cs_wallet);
-        for (const auto& walletEntry : mapWallet)
+
+        std::map<uint256, std::tuple<int /* depth */, bool/* mature coinbase */, bool /* from me */>> tx_info_cache;
+
+        for (const auto& output : m_map_utxos)
         {
-            const CWalletTx& wtx = walletEntry.second;
+            const uint256& wtxid = output.first.hash;
+            int i = output.first.n;
+            const CTxOut& txout = output.second;
 
-            if (!wtx.IsTrusted(locked_chain))
-                continue;
+            int tx_depth = -1;
+            bool is_mature = false;
+            bool is_from_me = false;
 
-            if (wtx.IsImmatureCoinBase(locked_chain))
-                continue;
-
-            int nDepth = wtx.GetDepthInMainChain(locked_chain);
-            if (nDepth < (wtx.IsFromMe(ISMINE_ALL) ? 0 : 1))
-                continue;
-
-            for (unsigned int i = 0; i < wtx.tx->vout.size(); i++)
-            {
-                CTxDestination addr;
-                if (!IsMine(wtx.tx->vout[i]))
+            const auto& it = tx_info_cache.find(wtxid);
+            if (it == tx_info_cache.end()) {
+                const auto& wtx_it = mapWallet.find(wtxid);
+                if (wtx_it == mapWallet.end()) {
                     continue;
-                if(!ExtractDestination(wtx.tx->vout[i].scriptPubKey, addr))
-                    continue;
+                }
+                const CWalletTx& wtx = wtx_it->second;
 
-                CAmount n = IsSpent(locked_chain, walletEntry.first, i) ? 0 : wtx.tx->vout[i].nValue;
+                for (const CTxIn& txin : wtx_it->second.stx.vin) {
+                    is_from_me |= IsMine(txin);
+                }
 
-                if (!balances.count(addr))
-                    balances[addr] = 0;
-                balances[addr] += n;
+                tx_depth = wtx.GetDepthInMainChain(locked_chain);
+                is_mature = !wtx.IsImmatureCoinBase(locked_chain);
+                tx_info_cache.emplace(wtxid, std::make_tuple(tx_depth, is_mature, is_from_me));
+            } else {
+                tx_depth = std::get<0>(it->second);
+                is_mature = std::get<1>(it->second);
+                is_from_me = std::get<2>(it->second);
             }
+
+            // Must wait until coinbase is safely deep enough in the chain before valuing it
+            if (!is_mature) {
+                continue;
+            }
+
+            if (tx_depth < (is_from_me ? 0 : 1)) {
+                continue;
+            }
+
+            CTxDestination addr;
+            if (!IsMine(txout))
+                continue;
+            if(!ExtractDestination(txout.scriptPubKey, addr))
+                continue;
+
+            CAmount n = IsSpent(locked_chain, wtxid, i) ? 0 : txout.nValue;
+
+            if (!balances.count(addr))
+                balances[addr] = 0;
+            balances[addr] += n;
         }
     }
 
