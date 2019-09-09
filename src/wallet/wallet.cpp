@@ -1461,12 +1461,9 @@ isminetype CWallet::IsMine(const CTxIn &txin) const
 {
     {
         LOCK(cs_wallet);
-        std::map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
-        if (mi != mapWallet.end())
-        {
-            const CWalletTx& prev = (*mi).second;
-            if (txin.prevout.n < prev.tx->vout.size())
-                return IsMine(prev.tx->vout[txin.prevout.n]);
+        const auto& it = m_map_utxos.find(txin.prevout);
+        if (it != m_map_utxos.end()) {
+            return IsMine(it->second);
         }
     }
     return ISMINE_NO;
@@ -1478,13 +1475,11 @@ CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter) const
 {
     {
         LOCK(cs_wallet);
-        std::map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(txin.prevout.hash);
-        if (mi != mapWallet.end())
-        {
-            const CWalletTx& prev = (*mi).second;
-            if (txin.prevout.n < prev.tx->vout.size())
-                if (IsMine(prev.tx->vout[txin.prevout.n]) & filter)
-                    return prev.tx->vout[txin.prevout.n].nValue;
+        const auto& it = m_map_utxos.find(txin.prevout);
+        if (it != m_map_utxos.end()) {
+            if (IsMine(it->second) & filter) {
+                return it->second.nValue;
+            }
         }
     }
     return 0;
@@ -1567,16 +1562,12 @@ bool CWallet::IsAllFromMe(const CTransaction& tx, const isminefilter& filter) co
 
     for (const CTxIn& txin : tx.vin)
     {
-        auto mi = mapWallet.find(txin.prevout.hash);
-        if (mi == mapWallet.end())
-            return false; // any unknown inputs can't be from us
+        const auto& it = m_map_utxos.find(txin.prevout);
+        if (it == m_map_utxos.end()) {
+            return false;
+        }
 
-        const CWalletTx& prev = (*mi).second;
-
-        if (txin.prevout.n >= prev.tx->vout.size())
-            return false; // invalid input!
-
-        if (!(IsMine(prev.tx->vout[txin.prevout.n]) & filter))
+        if (!(IsMine(it->second) & filter))
             return false;
     }
     return true;
@@ -1877,12 +1868,11 @@ int64_t CalculateMaximumSignedTxSize(const CTransaction &tx, const CWallet *wall
     // IsAllFromMe(ISMINE_SPENDABLE), so every input should already be in our
     // wallet, with a valid index into the vout array, and the ability to sign.
     for (const CTxIn& input : tx.vin) {
-        const auto mi = wallet->mapWallet.find(input.prevout.hash);
-        if (mi == wallet->mapWallet.end()) {
+        const auto& it = wallet->m_map_utxos.find(input.prevout);
+        if (it == wallet->m_map_utxos.end()) {
             return -1;
         }
-        assert(input.prevout.n < mi->second.tx->vout.size());
-        txouts.emplace_back(mi->second.tx->vout[input.prevout.n]);
+        txouts.emplace_back(it->second);
     }
     return CalculateMaximumSignedTxSize(tx, wallet, txouts, use_max_sig);
 }
@@ -2830,12 +2820,12 @@ bool CWallet::SignTransaction(CMutableTransaction& tx)
     // sign the new tx
     int nIn = 0;
     for (auto& input : tx.vin) {
-        std::map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(input.prevout.hash);
-        if(mi == mapWallet.end() || input.prevout.n >= mi->second.tx->vout.size()) {
+        const auto& it = m_map_utxos.find(input.prevout);
+        if (it == m_map_utxos.end()) {
             return false;
         }
-        const CScript& scriptPubKey = mi->second.tx->vout[input.prevout.n].scriptPubKey;
-        const CAmount& amount = mi->second.tx->vout[input.prevout.n].nValue;
+        const CScript& scriptPubKey = it->second.scriptPubKey;
+        const CAmount& amount = it->second.nValue;
         SignatureData sigdata;
         if (!ProduceSignature(*this, MutableTransactionSignatureCreator(&tx, nIn, amount, SIGHASH_ALL), scriptPubKey, sigdata)) {
             return false;
