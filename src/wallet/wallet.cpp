@@ -2631,7 +2631,7 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
         CTxDestination address;
         auto tx = GetWalletTx(coin.txid);
         if (coin.fSpendable &&
-            ExtractDestination(FindNonChangeParentOutput(*tx->tx, coin.i).scriptPubKey, address)) {
+            ExtractDestination(FindNonChangeParentOutput(coin.txout, tx->stx).scriptPubKey, address)) {
             result[address].emplace_back(std::move(coin));
         }
     }
@@ -2639,15 +2639,18 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
     std::vector<COutPoint> lockedCoins;
     ListLockedCoins(lockedCoins);
     for (const COutPoint& output : lockedCoins) {
-        auto it = mapWallet.find(output.hash);
-        if (it != mapWallet.end()) {
-            int depth = it->second.GetDepthInMainChain(locked_chain);
-            if (depth >= 0 && output.n < it->second.tx->vout.size() &&
-                IsMine(it->second.tx->vout[output.n]) == ISMINE_SPENDABLE) {
-                CTxDestination address;
-                if (ExtractDestination(FindNonChangeParentOutput(*it->second.tx, output.n).scriptPubKey, address)) {
-                    result[address].emplace_back(
-                        output.hash, output.n, it->second.tx->vout[output.n], depth, true /* spendable */, true /* solvable */, false /* safe */, this);
+        auto out_it = m_map_utxos.find(output);
+        if (out_it != m_map_utxos.end()) {
+            auto it = mapWallet.find(output.hash);
+            if (it != mapWallet.end()) {
+                int depth = it->second.GetDepthInMainChain(locked_chain);
+                if (depth >= 0 && output.n < it->second.stx.num_txouts &&
+                    IsMine(out_it->second) == ISMINE_SPENDABLE) {
+                    CTxDestination address;
+                    if (ExtractDestination(FindNonChangeParentOutput(out_it->second, it->second.stx).scriptPubKey, address)) {
+                        result[address].emplace_back(
+                            output.hash, output.n, out_it->second, depth, true /* spendable */, true /* solvable */, false /* safe */, this);
+                    }
                 }
             }
         }
@@ -2656,21 +2659,24 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
     return result;
 }
 
-const CTxOut& CWallet::FindNonChangeParentOutput(const CTransaction& tx, int output) const
+const CTxOut& CWallet::FindNonChangeParentOutput(const CTxOut& txout_in, const StrippedTx& tx) const
 {
-    const CTransaction* ptx = &tx;
-    int n = output;
-    while (IsChange(ptx->vout[n]) && ptx->vin.size() > 0) {
-        const COutPoint& prevout = ptx->vin[0].prevout;
-        auto it = mapWallet.find(prevout.hash);
-        if (it == mapWallet.end() || it->second.tx->vout.size() <= prevout.n ||
-            !IsMine(it->second.tx->vout[prevout.n])) {
+    const StrippedTx* stx = &tx;
+    const CTxOut* txout = &txout_in;
+    while (IsChange(*txout) && stx->vin.size() > 0) {
+        const COutPoint& prevout = stx->vin[0].prevout;
+        auto tx_it = mapWallet.find(prevout.hash);
+        if (tx_it == mapWallet.end() || tx_it->second.stx.num_txouts <= prevout.n) {
             break;
         }
-        ptx = it->second.tx.get();
-        n = prevout.n;
+        auto out_it = m_map_utxos.find(prevout);
+        txout = &out_it->second;
+        if (out_it == m_map_utxos.end() || !IsMine(*txout)) {
+            break;
+        }
+        stx = &tx_it->second.stx;
     }
-    return ptx->vout[n];
+    return *txout;
 }
 
 bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<OutputGroup> groups,
