@@ -2758,16 +2758,11 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
         bnb_used = false;
         coin_selection_params.use_bnb = false;
 
-        std::map<uint256, CWalletTx>::const_iterator it = mapWallet.find(outpoint.hash);
-        if (it != mapWallet.end())
-        {
-            const CWalletTx& wtx = it->second;
-            // Clearly invalid input, fail
-            if (wtx.tx->vout.size() <= outpoint.n)
-                return false;
+        const auto& it = m_map_utxos.find(outpoint);
+        if (it != m_map_utxos.end()) {
             // Just to calculate the marginal byte size
-            nValueFromPresetInputs += wtx.tx->vout[outpoint.n].nValue;
-            setPresetCoins.insert(CInputCoin(outpoint, wtx.tx->vout[outpoint.n]));
+            nValueFromPresetInputs += it->second.nValue;
+            setPresetCoins.insert(CInputCoin(outpoint, it->second));
         } else
             return false; // TODO: Allow non-wallet inputs
     }
