@@ -16,19 +16,14 @@ static const CAmount MIN_FINAL_CHANGE = MIN_CHANGE/2;
 
 class CInputCoin {
 public:
-    CInputCoin(const CTransactionRef& tx, unsigned int i)
+    CInputCoin(const COutPoint& outpoint_in, const CTxOut& txout_in)
     {
-        if (!tx)
-            throw std::invalid_argument("tx should not be null");
-        if (i >= tx->vout.size())
-            throw std::out_of_range("The output index is out of range");
-
-        outpoint = COutPoint(tx->GetHash(), i);
-        txout = tx->vout[i];
+        outpoint = outpoint_in;
+        txout = txout_in;
         effective_value = txout.nValue;
     }
 
-    CInputCoin(const CTransactionRef& tx, unsigned int i, int input_bytes) : CInputCoin(tx, i)
+    CInputCoin(const COutPoint& outpoint, const CTxOut& txout, int input_bytes) : CInputCoin(outpoint, txout)
     {
         m_input_bytes = input_bytes;
     }

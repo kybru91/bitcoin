@@ -42,7 +42,7 @@ static void add_coin(const CAmount& nValue, int nInput, std::vector<CInputCoin>&
     CMutableTransaction tx;
     tx.vout.resize(nInput + 1);
     tx.vout[nInput].nValue = nValue;
-    set.emplace_back(MakeTransactionRef(tx), nInput);
+    set.emplace_back(COutPoint(tx.GetHash(), nInput), tx.vout[nInput]);
 }
 
 static void add_coin(const CAmount& nValue, int nInput, CoinSet& set)
@@ -50,7 +50,7 @@ static void add_coin(const CAmount& nValue, int nInput, CoinSet& set)
     CMutableTransaction tx;
     tx.vout.resize(nInput + 1);
     tx.vout[nInput].nValue = nValue;
-    set.emplace(MakeTransactionRef(tx), nInput);
+    set.emplace(COutPoint(tx.GetHash(), nInput), tx.vout[nInput]);
 }
 
 static void add_coin(const CAmount& nValue, int nAge = 6*24, bool fIsFromMe = false, int nInput=0)

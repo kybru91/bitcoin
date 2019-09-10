@@ -2767,7 +2767,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
                 return false;
             // Just to calculate the marginal byte size
             nValueFromPresetInputs += wtx.tx->vout[outpoint.n].nValue;
-            setPresetCoins.insert(CInputCoin(wtx.tx, outpoint.n));
+            setPresetCoins.insert(CInputCoin(outpoint, wtx.tx->vout[outpoint.n]));
         } else
             return false; // TODO: Allow non-wallet inputs
     }
