@@ -1556,6 +1556,18 @@ CAmount CWallet::GetDebit(const CTransaction& tx, const isminefilter& filter) co
     return nDebit;
 }
 
+CAmount CWallet::GetDebit(const StrippedTx& tx, const isminefilter& filter) const
+{
+    CAmount debit = 0;
+    for (const CTxIn& txin : tx.vin)
+    {
+        debit += GetDebit(txin, filter);
+        if (!MoneyRange(debit))
+            throw std::runtime_error(std::string(__func__) + ": value out of range");
+    }
+    return debit;
+}
+
 bool CWallet::IsAllFromMe(const CTransaction& tx, const isminefilter& filter) const
 {
     LOCK(cs_wallet);
@@ -1585,6 +1597,20 @@ CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) c
     return nCredit;
 }
 
+CAmount CWallet::GetCredit(const StrippedTx& tx, const isminefilter& filter) const
+{
+    CAmount credit = 0;
+    for (int i = 0; i < tx.num_txouts; ++i) {
+        auto it = m_map_utxos.find(COutPoint(tx.txid, i));
+        if (it != m_map_utxos.end()) {
+            credit += GetCredit(it->second, filter);
+            if (!MoneyRange(credit))
+                throw std::runtime_error(std::string(__func__) + ": value out of range");
+        }
+    }
+    return credit;
+}
+
 CAmount CWallet::GetChange(const CTransaction& tx) const
 {
     CAmount nChange = 0;
@@ -1595,6 +1621,20 @@ CAmount CWallet::GetChange(const CTransaction& tx) const
             throw std::runtime_error(std::string(__func__) + ": value out of range");
     }
     return nChange;
+}
+
+CAmount CWallet::GetChange(const StrippedTx& tx) const
+{
+    CAmount change = 0;
+    for (int i = 0; i < tx.num_txouts; ++i) {
+        auto it = m_map_utxos.find(COutPoint(tx.txid, i));
+        if (it != m_map_utxos.end()) {
+            change += GetChange(it->second);
+            if (!MoneyRange(change))
+                throw std::runtime_error(std::string(__func__) + ": value out of range");
+        }
+    }
+    return change;
 }
 
 CPubKey CWallet::GenerateNewSeed()
@@ -2184,7 +2224,7 @@ CAmount CWalletTx::GetCachableAmount(AmountType type, const isminefilter& filter
 {
     auto& amount = m_amounts[type];
     if (recalculate || !amount.m_cached[filter]) {
-        amount.Set(filter, type == DEBIT ? pwallet->GetDebit(*tx, filter) : pwallet->GetCredit(*tx, filter));
+        amount.Set(filter, type == DEBIT ? pwallet->GetDebit(stx, filter) : pwallet->GetCredit(stx, filter));
     }
     return amount.m_value[filter];
 }
@@ -2225,7 +2265,7 @@ CAmount CWalletTx::GetChange() const
 {
     if (fChangeCached)
         return nChangeCached;
-    nChangeCached = pwallet->GetChange(*tx);
+    nChangeCached = pwallet->GetChange(stx);
     fChangeCached = true;
     return nChangeCached;
 }
