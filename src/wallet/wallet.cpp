@@ -2141,6 +2141,7 @@ void CWallet::ReacceptWalletTransactions(interfaces::Chain::Lock& locked_chain)
 
 bool CWalletTx::SubmitMemoryPoolAndRelay(std::string& err_string, bool relay, interfaces::Chain::Lock& locked_chain)
 {
+    assert(tx);
     // Can't relay if wallet is not broadcasting
     if (!pwallet->GetBroadcastTransactions()) return false;
     // Don't relay abandoned transactions
@@ -4977,6 +4978,7 @@ bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<uns
 
 void CWalletTx::LoadOutputsToWallet() const
 {
+    assert(tx);
     for (int i = 0; i < tx->vout.size(); ++i) {
         pwallet->m_map_utxos.emplace(COutPoint(stx.txid, i), tx->vout.at(i));
     }
