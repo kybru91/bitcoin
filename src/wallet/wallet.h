@@ -726,9 +726,10 @@ public:
 class COutput
 {
 public:
-    const CWalletTx *tx;
+    uint256 txid;
     int i;
     int nDepth;
+    CTxOut txout;
 
     /** Pre-computed estimated size of this output as a fully-signed input in a transaction. Can be -1 if it could not be calculated */
     int nInputBytes;
@@ -749,13 +750,21 @@ public:
      */
     bool fSafe;
 
-    COutput(const CWalletTx *txIn, int iIn, int nDepthIn, bool fSpendableIn, bool fSolvableIn, bool fSafeIn, bool use_max_sig_in = false)
+    COutput(const uint256& txid_in, int iIn, const CTxOut& txout_in, int nDepthIn, bool fSpendableIn, bool fSolvableIn, bool fSafeIn, const CWallet* wallet, bool use_max_sig_in = false)
     {
-        tx = txIn; i = iIn; nDepth = nDepthIn; fSpendable = fSpendableIn; fSolvable = fSolvableIn; fSafe = fSafeIn; nInputBytes = -1; use_max_sig = use_max_sig_in;
+        txid = txid_in;
+        i = iIn;
+        txout = txout_in;
+        nDepth = nDepthIn;
+        fSpendable = fSpendableIn;
+        fSolvable = fSolvableIn;
+        fSafe = fSafeIn;
+        nInputBytes = -1;
+        use_max_sig = use_max_sig_in;
         // If known and signable by the given wallet, compute nInputBytes
         // Failure will keep this value -1
-        if (fSpendable && tx) {
-            nInputBytes = tx->GetSpendSize(i, use_max_sig);
+        if (fSpendable && wallet) {
+            nInputBytes = CalculateMaximumSignedInputSize(txout, wallet, use_max_sig);
         }
     }
 
@@ -763,7 +772,7 @@ public:
 
     inline CInputCoin GetInputCoin() const
     {
-        return CInputCoin(COutPoint(tx->stx.txid, i), tx->tx->vout[i], nInputBytes);
+        return CInputCoin(COutPoint(txid, i), txout, nInputBytes);
     }
 };
 

@@ -81,15 +81,17 @@ WalletTxStatus MakeWalletTxStatus(interfaces::Chain::Lock& locked_chain, const C
 //! Construct wallet TxOut struct.
 WalletTxOut MakeWalletTxOut(interfaces::Chain::Lock& locked_chain,
     CWallet& wallet,
-    const CWalletTx& wtx,
+    const uint256& txid,
+    const CTxOut& txout,
+    int64_t time,
     int n,
     int depth) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     WalletTxOut result;
-    result.txout = wtx.tx->vout[n];
-    result.time = wtx.GetTxTime();
+    result.txout = txout;
+    result.time = time;
     result.depth_in_main_chain = depth;
-    result.is_spent = wallet.IsSpent(locked_chain, wtx.GetHash(), n);
+    result.is_spent = wallet.IsSpent(locked_chain, txid, n);
     return result;
 }
 
@@ -408,8 +410,8 @@ public:
         for (const auto& entry : m_wallet->ListCoins(*locked_chain)) {
             auto& group = result[entry.first];
             for (const auto& coin : entry.second) {
-                group.emplace_back(COutPoint(coin.tx->GetHash(), coin.i),
-                    MakeWalletTxOut(*locked_chain, *m_wallet, *coin.tx, coin.i, coin.nDepth));
+                group.emplace_back(COutPoint(coin.txid, coin.i),
+                    MakeWalletTxOut(*locked_chain, *m_wallet, coin.txid, coin.txout, m_wallet->GetWalletTx(coin.txid)->GetTxTime(), coin.i, coin.nDepth));
             }
         }
         return result;
@@ -422,11 +424,12 @@ public:
         result.reserve(outputs.size());
         for (const auto& output : outputs) {
             result.emplace_back();
-            auto it = m_wallet->mapWallet.find(output.hash);
-            if (it != m_wallet->mapWallet.end()) {
-                int depth = it->second.GetDepthInMainChain(*locked_chain);
+            auto txout_it = m_wallet->m_map_utxos.find(output);
+            if (txout_it != m_wallet->m_map_utxos.end()) {
+                auto tx = m_wallet->GetWalletTx(output.hash);
+                int depth = tx->GetDepthInMainChain(*locked_chain);
                 if (depth >= 0) {
-                    result.back() = MakeWalletTxOut(*locked_chain, *m_wallet, it->second, output.n, depth);
+                    result.back() = MakeWalletTxOut(*locked_chain, *m_wallet, output.hash, txout_it->second, tx->GetTxTime(), output.n, depth);
                 }
             }
         }

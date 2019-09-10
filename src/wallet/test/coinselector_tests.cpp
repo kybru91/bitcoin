@@ -67,7 +67,7 @@ static void add_coin(const CAmount& nValue, int nAge = 6*24, bool fIsFromMe = fa
     {
         coins_from_me.insert(wtx->GetHash());
     }
-    COutput output(wtx.get(), nInput, nAge, true /* spendable */, true /* solvable */, true /* safe */);
+    COutput output(wtx->GetHash(), nInput, wtx->tx->vout[nInput], nAge, true /* spendable */, true /* solvable */, true /* safe */, &testWallet);
     vCoins.push_back(output);
     testWallet.AddToWallet(*wtx.get());
     wtxn.emplace_back(std::move(wtx));
@@ -111,7 +111,7 @@ inline std::vector<OutputGroup>& GroupCoins(const std::vector<COutput>& coins)
 {
     static std::vector<OutputGroup> static_groups;
     static_groups.clear();
-    for (auto& coin : coins) static_groups.emplace_back(coin.GetInputCoin(), coin.nDepth, coins_from_me.count(coin.tx->GetHash()) > 0, 0, 0);
+    for (auto& coin : coins) static_groups.emplace_back(coin.GetInputCoin(), coin.nDepth, coins_from_me.count(coin.txid) > 0, 0, 0);
     return static_groups;
 }
 
@@ -254,7 +254,7 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
     add_coin(2 * CENT);
     CCoinControl coin_control;
     coin_control.fAllowOtherInputs = true;
-    coin_control.Select(COutPoint(vCoins.at(0).tx->GetHash(), vCoins.at(0).i));
+    coin_control.Select(COutPoint(vCoins.at(0).txid, vCoins.at(0).i));
     BOOST_CHECK(testWallet.SelectCoins(vCoins, 10 * CENT, setCoinsRet, nValueRet, coin_control, coin_selection_params_bnb, bnb_used));
     BOOST_CHECK(!bnb_used);
     BOOST_CHECK(!coin_selection_params_bnb.use_bnb);

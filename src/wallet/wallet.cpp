@@ -238,7 +238,7 @@ const uint256 CWalletTx::ABANDON_HASH(uint256S("00000000000000000000000000000000
 
 std::string COutput::ToString() const
 {
-    return strprintf("COutput(%s, %d, %d) [%s]", tx->GetHash().ToString(), i, nDepth, FormatMoney(tx->tx->vout[i].nValue));
+    return strprintf("COutput(%s, %d, %d) [%s]", txid.ToString(), i, nDepth, FormatMoney(txout.nValue));
 }
 
 std::vector<CKeyID> GetAffectedKeys(const CScript& spk, const SigningProvider& provider)
@@ -2467,7 +2467,7 @@ CAmount CWallet::GetAvailableBalance(const CCoinControl* coinControl) const
     AvailableCoins(*locked_chain, vCoins, true, coinControl);
     for (const COutput& out : vCoins) {
         if (out.fSpendable) {
-            balance += out.tx->tx->vout[out.i].nValue;
+            balance += out.txout.nValue;
         }
     }
     return balance;
@@ -2600,7 +2600,7 @@ void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<
         bool solvable = IsSolvable(*this, txout.scriptPubKey);
         bool spendable = ((mine & ISMINE_SPENDABLE) != ISMINE_NO) || (((mine & ISMINE_WATCH_ONLY) != ISMINE_NO) && (coinControl && coinControl->fAllowWatchOnly && solvable));
 
-        vCoins.push_back(COutput(&wtx, i, nDepth, spendable, solvable, safeTx, (coinControl && coinControl->fAllowWatchOnly)));
+        vCoins.push_back(COutput(wtxid, i, txout, nDepth, spendable, solvable, safeTx, this, (coinControl && coinControl->fAllowWatchOnly)));
 
         // Checks the sum amount of all UTXO's.
         if (nMinimumSumAmount != MAX_MONEY) {
@@ -2629,8 +2629,9 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
 
     for (const COutput& coin : availableCoins) {
         CTxDestination address;
+        auto tx = GetWalletTx(coin.txid);
         if (coin.fSpendable &&
-            ExtractDestination(FindNonChangeParentOutput(*coin.tx->tx, coin.i).scriptPubKey, address)) {
+            ExtractDestination(FindNonChangeParentOutput(*tx->tx, coin.i).scriptPubKey, address)) {
             result[address].emplace_back(std::move(coin));
         }
     }
@@ -2646,7 +2647,7 @@ std::map<CTxDestination, std::vector<COutput>> CWallet::ListCoins(interfaces::Ch
                 CTxDestination address;
                 if (ExtractDestination(FindNonChangeParentOutput(*it->second.tx, output.n).scriptPubKey, address)) {
                     result[address].emplace_back(
-                        &it->second, output.n, depth, true /* spendable */, true /* solvable */, false /* safe */);
+                        output.hash, output.n, it->second.tx->vout[output.n], depth, true /* spendable */, true /* solvable */, false /* safe */, this);
                 }
             }
         }
@@ -2740,7 +2741,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
         {
             if (!out.fSpendable)
                  continue;
-            nValueRet += out.tx->tx->vout[out.i].nValue;
+            nValueRet += out.txout.nValue;
             setCoinsRet.insert(out.GetInputCoin());
         }
         return (nValueRet >= nTargetValue);
@@ -4770,9 +4771,10 @@ std::vector<OutputGroup> CWallet::GroupOutputs(const std::vector<COutput>& outpu
         if (output.fSpendable) {
             CInputCoin input_coin = output.GetInputCoin();
 
+            auto tx = GetWalletTx(output.txid);
             size_t ancestors, descendants;
-            chain().getTransactionAncestry(output.tx->GetHash(), ancestors, descendants);
-            if (!single_coin && ExtractDestination(output.tx->tx->vout[output.i].scriptPubKey, dst)) {
+            chain().getTransactionAncestry(output.txid, ancestors, descendants);
+            if (!single_coin && ExtractDestination(output.txout.scriptPubKey, dst)) {
                 // Limit output groups to no more than 10 entries, to protect
                 // against inadvertently creating a too-large transaction
                 // when using -avoidpartialspends
@@ -4780,9 +4782,9 @@ std::vector<OutputGroup> CWallet::GroupOutputs(const std::vector<COutput>& outpu
                     groups.push_back(gmap[dst]);
                     gmap.erase(dst);
                 }
-                gmap[dst].Insert(input_coin, output.nDepth, output.tx->IsFromMe(ISMINE_ALL), ancestors, descendants);
+                gmap[dst].Insert(input_coin, output.nDepth, tx->IsFromMe(ISMINE_ALL), ancestors, descendants);
             } else {
-                groups.emplace_back(input_coin, output.nDepth, output.tx->IsFromMe(ISMINE_ALL), ancestors, descendants);
+                groups.emplace_back(input_coin, output.nDepth, tx->IsFromMe(ISMINE_ALL), ancestors, descendants);
             }
         }
     }

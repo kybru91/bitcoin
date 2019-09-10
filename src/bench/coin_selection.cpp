@@ -42,7 +42,7 @@ static void CoinSelection(benchmark::State& state)
     // Create groups
     std::vector<OutputGroup> groups;
     for (const auto& wtx : wtxs) {
-        COutput output(wtx.get(), 0 /* iIn */, 6 * 24 /* nDepthIn */, true /* spendable */, true /* solvable */, true /* safe */);
+        COutput output(wtx->GetHash(), 0 /* iIn */, wtx->tx->vout[0], 6 * 24 /* nDepthIn */, true /* spendable */, true /* solvable */, true /* safe */, &wallet);
         groups.emplace_back(output.GetInputCoin(), 6, false, 0, 0);
     }
 
@@ -71,7 +71,7 @@ static void add_coin(const CAmount& nValue, int nInput, std::vector<OutputGroup>
     tx.vout.resize(nInput + 1);
     tx.vout[nInput].nValue = nValue;
     std::unique_ptr<CWalletTx> wtx = MakeUnique<CWalletTx>(&testWallet, MakeTransactionRef(std::move(tx)));
-    set.emplace_back(COutput(wtx.get(), nInput, 0, true, true, true).GetInputCoin(), 0, true, 0, 0);
+    set.emplace_back(COutput(wtx->GetHash(), nInput, wtx->tx->vout[nInput], 0, true, true, true, &testWallet).GetInputCoin(), 0, true, 0, 0);
     wtxn.emplace_back(std::move(wtx));
 }
 // Copied from src/wallet/test/coinselector_tests.cpp
