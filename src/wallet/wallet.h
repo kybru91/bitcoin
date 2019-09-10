@@ -419,6 +419,11 @@ struct StrippedTx : CMutableTransaction
         tx_size = tx->GetTotalSize();
         StripTransaction();
     }
+
+    bool IsCoinBase() const
+    {
+        return (vin.size() == 1 && vin[0].prevout.IsNull());
+    }
 };
 
 /**
@@ -711,8 +716,8 @@ public:
     bool isUnconfirmed() const { return m_confirm.status == CWalletTx::UNCONFIRMED; }
     void setUnconfirmed() { m_confirm.status = CWalletTx::UNCONFIRMED; }
     void setConfirmed() { m_confirm.status = CWalletTx::CONFIRMED; }
-    const uint256& GetHash() const { return tx->GetHash(); }
-    bool IsCoinBase() const { return tx->IsCoinBase(); }
+    const uint256& GetHash() const { return stx.txid; }
+    bool IsCoinBase() const { return stx.IsCoinBase(); }
     bool IsImmatureCoinBase(interfaces::Chain::Lock& locked_chain) const;
 };
 

@@ -2231,7 +2231,7 @@ CAmount CWalletTx::GetCachableAmount(AmountType type, const isminefilter& filter
 
 CAmount CWalletTx::GetDebit(const isminefilter& filter) const
 {
-    if (tx->vin.empty())
+    if (stx.vin.empty())
         return 0;
 
     CAmount debit = 0;
@@ -2278,7 +2278,7 @@ bool CWalletTx::InMempool() const
 bool CWalletTx::IsTrusted(interfaces::Chain::Lock& locked_chain) const
 {
     // Quick answer in most cases
-    if (!locked_chain.checkFinalTx(*tx)) {
+    if (!locked_chain.checkFinalTx(CTransaction(stx))) {
         return false;
     }
     int nDepth = GetDepthInMainChain(locked_chain);
@@ -2294,15 +2294,15 @@ bool CWalletTx::IsTrusted(interfaces::Chain::Lock& locked_chain) const
         return false;
 
     // Trusted if all inputs are from us and are in the mempool:
-    for (const CTxIn& txin : tx->vin)
+    for (const CTxIn& txin : stx.vin)
     {
-        // Transactions not sent by us: not trusted
-        const CWalletTx* parent = pwallet->GetWalletTx(txin.prevout.hash);
-        if (parent == nullptr)
+        const auto& txout_it = pwallet->m_map_utxos.find(txin.prevout);
+        if (txout_it == pwallet->m_map_utxos.end()) {
             return false;
-        const CTxOut& parentOut = parent->tx->vout[txin.prevout.n];
-        if (pwallet->IsMine(parentOut) != ISMINE_SPENDABLE)
+        }
+        if (pwallet->IsMine(txout_it->second) != ISMINE_SPENDABLE) {
             return false;
+        }
     }
     return true;
 }
