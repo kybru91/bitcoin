@@ -28,6 +28,7 @@ std::vector<std::unique_ptr<CWalletTx>> wtxn;
 typedef std::set<CInputCoin> CoinSet;
 
 static std::vector<COutput> vCoins;
+static std::set<uint256> coins_from_me;
 static auto testChain = interfaces::MakeChain();
 static CWallet testWallet(testChain.get(), WalletLocation(), WalletDatabase::CreateDummy());
 static CAmount balance = 0;
@@ -61,15 +62,10 @@ static void add_coin(const CAmount& nValue, int nAge = 6*24, bool fIsFromMe = fa
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
     tx.vout.resize(nInput + 1);
     tx.vout[nInput].nValue = nValue;
-    if (fIsFromMe) {
-        // IsFromMe() returns (GetDebit() > 0), and GetDebit() is 0 if vin.empty(),
-        // so stop vin being empty, and cache a non-zero Debit to fake out IsFromMe()
-        tx.vin.resize(1);
-    }
     std::unique_ptr<CWalletTx> wtx = MakeUnique<CWalletTx>(&testWallet, MakeTransactionRef(std::move(tx)));
     if (fIsFromMe)
     {
-        wtx->m_amounts[CWalletTx::DEBIT].Set(ISMINE_SPENDABLE, 1);
+        coins_from_me.insert(wtx->GetHash());
     }
     COutput output(wtx.get(), nInput, nAge, true /* spendable */, true /* solvable */, true /* safe */);
     vCoins.push_back(output);
@@ -81,6 +77,7 @@ static void empty_wallet(void)
 {
     vCoins.clear();
     wtxn.clear();
+    coins_from_me.clear();
     balance = 0;
 }
 
@@ -114,7 +111,7 @@ inline std::vector<OutputGroup>& GroupCoins(const std::vector<COutput>& coins)
 {
     static std::vector<OutputGroup> static_groups;
     static_groups.clear();
-    for (auto& coin : coins) static_groups.emplace_back(coin.GetInputCoin(), coin.nDepth, coin.tx->m_amounts[CWalletTx::DEBIT].m_cached[ISMINE_SPENDABLE] && coin.tx->m_amounts[CWalletTx::DEBIT].m_value[ISMINE_SPENDABLE] == 1 /* HACK: we can't figure out the is_me flag so we use the conditions defined above; perhaps set safe to false for !fIsFromMe in add_coin() */, 0, 0);
+    for (auto& coin : coins) static_groups.emplace_back(coin.GetInputCoin(), coin.nDepth, coins_from_me.count(coin.tx->GetHash()) > 0, 0, 0);
     return static_groups;
 }
 
