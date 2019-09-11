@@ -1585,6 +1585,23 @@ bool CWallet::IsAllFromMe(const CTransaction& tx, const isminefilter& filter) co
     return true;
 }
 
+bool CWallet::IsAllFromMe(const StrippedTx& tx, const isminefilter& filter) const
+{
+    LOCK(cs_wallet);
+
+    for (const CTxIn& txin : tx.vin)
+    {
+        const auto& it = m_map_utxos.find(txin.prevout);
+        if (it == m_map_utxos.end()) {
+            return false;
+        }
+
+        if (!(IsMine(it->second) & filter))
+            return false;
+    }
+    return true;
+}
+
 CAmount CWallet::GetCredit(const CTransaction& tx, const isminefilter& filter) const
 {
     CAmount nCredit = 0;

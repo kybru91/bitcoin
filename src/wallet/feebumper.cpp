@@ -36,7 +36,7 @@ static feebumper::Result PreconditionChecks(interfaces::Chain::Lock& locked_chai
         return feebumper::Result::WALLET_ERROR;
     }
 
-    if (!SignalsOptInRBF(*wtx.tx)) {
+    if (!SignalsOptInRBF(CTransaction(wtx.stx))) {
         errors.push_back("Transaction is not BIP 125 replaceable");
         return feebumper::Result::WALLET_ERROR;
     }
@@ -48,7 +48,7 @@ static feebumper::Result PreconditionChecks(interfaces::Chain::Lock& locked_chai
 
     // check that original tx consists entirely of our inputs
     // if not, we can't bump the fee, because the wallet has no way of knowing the value of the other inputs (thus the fee)
-    if (!wallet->IsAllFromMe(*wtx.tx, ISMINE_SPENDABLE)) {
+    if (!wallet->IsAllFromMe(wtx.stx, ISMINE_SPENDABLE)) {
         errors.push_back("Transaction contains inputs that don't belong to this wallet");
         return feebumper::Result::WALLET_ERROR;
     }

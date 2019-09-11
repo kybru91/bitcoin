@@ -1301,6 +1301,7 @@ public:
     CAmount GetDebit(const StrippedTx& tx, const isminefilter& filter) const;
     /** Returns whether all of the inputs match the filter */
     bool IsAllFromMe(const CTransaction& tx, const isminefilter& filter) const;
+    bool IsAllFromMe(const StrippedTx& tx, const isminefilter& filter) const;
     CAmount GetCredit(const CTransaction& tx, const isminefilter& filter) const;
     CAmount GetCredit(const StrippedTx& tx, const isminefilter& filter) const;
     CAmount GetChange(const CTransaction& tx) const;
