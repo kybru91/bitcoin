@@ -719,6 +719,10 @@ public:
     const uint256& GetHash() const { return stx.txid; }
     bool IsCoinBase() const { return stx.IsCoinBase(); }
     bool IsImmatureCoinBase(interfaces::Chain::Lock& locked_chain) const;
+
+    //! Returns tx if its loaded, otherwise it will read from the disk
+    //! Avoid calling this too much so that disk usage does not go crazy
+    CTransactionRef GetTx() const;
 };
 
 class COutput
