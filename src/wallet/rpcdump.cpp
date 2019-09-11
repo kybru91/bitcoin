@@ -389,7 +389,7 @@ UniValue importprunedfunds(const JSONRPCRequest& request)
     auto locked_chain = pwallet->chain().lock();
     LOCK(pwallet->cs_wallet);
 
-    if (pwallet->IsMine(*wtx.tx)) {
+    if (pwallet->IsMine(*wtx.GetTx())) {
         pwallet->AddToWallet(wtx, false);
         return NullUniValue;
     }

@@ -30,7 +30,7 @@ TransactionError FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
                 const CWalletTx& wtx = it->second;
                 // We only need the non_witness_utxo, which is a superset of the witness_utxo.
                 //   The signing code will switch to the smaller witness_utxo if this is ok.
-                input.non_witness_utxo = wtx.tx;
+                input.non_witness_utxo = wtx.GetTx();
             }
         }
 
