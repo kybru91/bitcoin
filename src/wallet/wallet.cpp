@@ -1959,6 +1959,8 @@ int CalculateMaximumSignedInputSize(const CTxOut& txout, const CWallet* wallet, 
 void CWalletTx::GetAmounts(std::list<COutputEntry>& listReceived,
                            std::list<COutputEntry>& listSent, CAmount& nFee, const isminefilter& filter) const
 {
+    CTransactionRef l_tx = GetTx();
+
     nFee = 0;
     listReceived.clear();
     listSent.clear();
@@ -1967,14 +1969,14 @@ void CWalletTx::GetAmounts(std::list<COutputEntry>& listReceived,
     CAmount nDebit = GetDebit(filter);
     if (nDebit > 0) // debit>0 means we signed/sent this transaction
     {
-        CAmount nValueOut = tx->GetValueOut();
+        CAmount nValueOut = l_tx->GetValueOut();
         nFee = nDebit - nValueOut;
     }
 
     // Sent/received.
-    for (unsigned int i = 0; i < tx->vout.size(); ++i)
+    for (unsigned int i = 0; i < l_tx->vout.size(); ++i)
     {
-        const CTxOut& txout = tx->vout[i];
+        const CTxOut& txout = l_tx->vout[i];
         isminetype fIsMine = pwallet->IsMine(txout);
         // Only need to handle txouts if AT LEAST one of these is true:
         //   1) they debit from us (sent)
