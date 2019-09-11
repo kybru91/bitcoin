@@ -738,6 +738,11 @@ public:
     //! Returns tx if its loaded, otherwise it will read from the disk
     //! Avoid calling this too much so that disk usage does not go crazy
     CTransactionRef GetTx() const;
+
+    //! Unloads the transaction from memory
+    void UnloadTx();
+    //! Load the transaction into memory
+    void LoadTx();
 };
 
 class COutput

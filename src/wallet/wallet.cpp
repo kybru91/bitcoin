@@ -1203,6 +1203,7 @@ void CWallet::LoadToWallet(CWalletTx& wtxIn)
             }
         }
     }
+    wtx.UnloadTx();
 }
 
 bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, CWalletTx::Status status, const uint256& block_hash, int posInBlock, bool fUpdate)
@@ -1256,7 +1257,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, CWalletTx::St
             // which means user may have to call abandontransaction again
             wtx.SetConf(status, block_hash, posInBlock);
 
-            return AddToWallet(wtx, false);
+            if (AddToWallet(wtx, false)) {
+                wtx.UnloadTx();
+                return true;
+            }
+            return false;
         }
     }
     return false;
@@ -2201,7 +2206,9 @@ void CWallet::ReacceptWalletTransactions(interfaces::Chain::Lock& locked_chain)
     for (const std::pair<const int64_t, CWalletTx*>& item : mapSorted) {
         CWalletTx& wtx = *(item.second);
         std::string unused_err_string;
+        wtx.LoadTx();
         wtx.SubmitMemoryPoolAndRelay(unused_err_string, false, locked_chain);
+        wtx.UnloadTx();
     }
 }
 
@@ -2355,6 +2362,23 @@ CTransactionRef CWalletTx::GetTx() const
     return tx;
 }
 
+void CWalletTx::UnloadTx()
+{
+    if (tx) {
+        tx = nullptr;
+    }
+}
+
+void CWalletTx::LoadTx()
+{
+    if (!tx) {
+        WalletBatch batch(pwallet->GetDBHandle());
+        if (!batch.ReadTx(GetHash(), tx)) {
+            throw std::runtime_error(std::string(__func__) + ": Failed to read transaction from wallet");
+        }
+    }
+}
+
 // Rebroadcast transactions from the wallet. We do this on a random timer
 // to slightly obfuscate which transactions come from our wallet.
 //
@@ -2395,7 +2419,9 @@ void CWallet::ResendWalletTransactions()
             // any confirmed or conflicting txs.
             if (wtx.nTimeReceived > m_best_block_time - 5 * 60) continue;
             std::string unused_err_string;
+            wtx.LoadTx();
             if (wtx.SubmitMemoryPoolAndRelay(unused_err_string, true, *locked_chain)) ++submitted_tx_count;
+            wtx.UnloadTx();
         }
     } // locked_chain and cs_wallet
 
@@ -3407,6 +3433,7 @@ bool CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::ve
                 // TODO: if we expect the failure to be long term or permanent, instead delete wtx from the wallet and return failure.
             }
         }
+        wtx.UnloadTx();
     }
     return true;
 }
