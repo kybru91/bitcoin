@@ -127,12 +127,9 @@ class WalletTest(BitcoinTestFramework):
         assert_raises_rpc_error(-8, "txid must be hexadecimal string (not 'ZZZ0000000000000000000000000000000000000000000000000000000000000')",
                                 self.nodes[2].lockunspent, False,
                                 [{"txid": "ZZZ0000000000000000000000000000000000000000000000000000000000000", "vout": 0}])
-        assert_raises_rpc_error(-8, "Invalid parameter, unknown transaction",
+        assert_raises_rpc_error(-8, "Invalid parameter, unknown outpoint",
                                 self.nodes[2].lockunspent, False,
                                 [{"txid": "0000000000000000000000000000000000000000000000000000000000000000", "vout": 0}])
-        assert_raises_rpc_error(-8, "Invalid parameter, vout index out of bounds",
-                                self.nodes[2].lockunspent, False,
-                                [{"txid": unspent_0["txid"], "vout": 999}])
 
         # An output should be unlocked when spent
         unspent_0 = self.nodes[1].listunspent()[0]

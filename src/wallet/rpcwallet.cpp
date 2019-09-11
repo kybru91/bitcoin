@@ -155,7 +155,7 @@ static void WalletTxToJSON(interfaces::Chain& chain, interfaces::Chain::Lock& lo
     // Add opt-in RBF status
     std::string rbfStatus = "no";
     if (confirms <= 0) {
-        RBFTransactionState rbfState = chain.isRBFOptIn(*wtx.tx);
+        RBFTransactionState rbfState = chain.isRBFOptIn(ConstStrippedTx(wtx.stx));
         if (rbfState == RBFTransactionState::UNKNOWN)
             rbfStatus = "unknown";
         else if (rbfState == RBFTransactionState::REPLACEABLE_BIP125)
@@ -627,16 +627,21 @@ static UniValue getreceivedbyaddress(const JSONRPCRequest& request)
 
     // Tally
     CAmount nAmount = 0;
-    for (const std::pair<const uint256, CWalletTx>& pairWtx : pwallet->mapWallet) {
-        const CWalletTx& wtx = pairWtx.second;
-        if (wtx.IsCoinBase() || !locked_chain->checkFinalTx(*wtx.tx)) {
+    for (const auto& pair : pwallet->m_map_utxos) {
+        const CTxOut& txout = pair.second;
+
+        const auto wtx_it = pwallet->mapWallet.find(pair.first.hash);
+        if (wtx_it == pwallet->mapWallet.end()) {
+            continue;
+        }
+        const CWalletTx& wtx = wtx_it->second;
+        if (wtx.IsCoinBase() || !locked_chain->checkFinalTx(CTransaction(wtx.stx))) {
             continue;
         }
 
-        for (const CTxOut& txout : wtx.tx->vout)
-            if (txout.scriptPubKey == scriptPubKey)
-                if (wtx.GetDepthInMainChain(*locked_chain) >= nMinDepth)
-                    nAmount += txout.nValue;
+        if (txout.scriptPubKey == scriptPubKey)
+            if (wtx.GetDepthInMainChain(*locked_chain) >= nMinDepth)
+                nAmount += txout.nValue;
     }
 
     return  ValueFromAmount(nAmount);
@@ -691,19 +696,22 @@ static UniValue getreceivedbylabel(const JSONRPCRequest& request)
 
     // Tally
     CAmount nAmount = 0;
-    for (const std::pair<const uint256, CWalletTx>& pairWtx : pwallet->mapWallet) {
-        const CWalletTx& wtx = pairWtx.second;
-        if (wtx.IsCoinBase() || !locked_chain->checkFinalTx(*wtx.tx)) {
+    for (const auto& pair : pwallet->m_map_utxos) {
+        const CTxOut& txout = pair.second;
+
+        const auto wtx_it = pwallet->mapWallet.find(pair.first.hash);
+        if (wtx_it == pwallet->mapWallet.end()) {
+            continue;
+        }
+        const CWalletTx& wtx = wtx_it->second;
+        if (wtx.IsCoinBase() || !locked_chain->checkFinalTx(CTransaction(wtx.stx))) {
             continue;
         }
 
-        for (const CTxOut& txout : wtx.tx->vout)
-        {
-            CTxDestination address;
-            if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*pwallet, address) && setAddress.count(address)) {
-                if (wtx.GetDepthInMainChain(*locked_chain) >= nMinDepth)
-                    nAmount += txout.nValue;
-            }
+        CTxDestination address;
+        if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*pwallet, address) && setAddress.count(address)) {
+            if (wtx.GetDepthInMainChain(*locked_chain) >= nMinDepth)
+                nAmount += txout.nValue;
         }
     }
 
@@ -1054,10 +1062,15 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
 
     // Tally
     std::map<CTxDestination, tallyitem> mapTally;
-    for (const std::pair<const uint256, CWalletTx>& pairWtx : pwallet->mapWallet) {
-        const CWalletTx& wtx = pairWtx.second;
+    for (const auto& pair : pwallet->m_map_utxos) {
+        const CTxOut& txout = pair.second;
 
-        if (wtx.IsCoinBase() || !locked_chain.checkFinalTx(*wtx.tx)) {
+        const auto wtx_it = pwallet->mapWallet.find(pair.first.hash);
+        if (wtx_it == pwallet->mapWallet.end()) {
+            continue;
+        }
+        const CWalletTx& wtx = wtx_it->second;
+        if (wtx.IsCoinBase() || !locked_chain.checkFinalTx(CTransaction(wtx.stx))) {
             continue;
         }
 
@@ -1065,27 +1078,24 @@ static UniValue ListReceived(interfaces::Chain::Lock& locked_chain, CWallet * co
         if (nDepth < nMinDepth)
             continue;
 
-        for (const CTxOut& txout : wtx.tx->vout)
-        {
-            CTxDestination address;
-            if (!ExtractDestination(txout.scriptPubKey, address))
-                continue;
+        CTxDestination address;
+        if (!ExtractDestination(txout.scriptPubKey, address))
+            continue;
 
-            if (has_filtered_address && !(filtered_address == address)) {
-                continue;
-            }
-
-            isminefilter mine = IsMine(*pwallet, address);
-            if(!(mine & filter))
-                continue;
-
-            tallyitem& item = mapTally[address];
-            item.nAmount += txout.nValue;
-            item.nConf = std::min(item.nConf, nDepth);
-            item.txids.push_back(wtx.GetHash());
-            if (mine & ISMINE_WATCH_ONLY)
-                item.fIsWatchonly = true;
+        if (has_filtered_address && !(filtered_address == address)) {
+            continue;
         }
+
+        isminefilter mine = IsMine(*pwallet, address);
+        if(!(mine & filter))
+            continue;
+
+        tallyitem& item = mapTally[address];
+        item.nAmount += txout.nValue;
+        item.nConf = std::min(item.nConf, nDepth);
+        item.txids.push_back(wtx.GetHash());
+        if (mine & ISMINE_WATCH_ONLY)
+            item.fIsWatchonly = true;
     }
 
     // Reply
@@ -2204,15 +2214,9 @@ static UniValue lockunspent(const JSONRPCRequest& request)
 
         const COutPoint outpt(txid, nOutput);
 
-        const auto it = pwallet->mapWallet.find(outpt.hash);
-        if (it == pwallet->mapWallet.end()) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, unknown transaction");
-        }
-
-        const CWalletTx& trans = it->second;
-
-        if (outpt.n >= trans.tx->vout.size()) {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, vout index out of bounds");
+        const auto it = pwallet->m_map_utxos.find(outpt);
+        if (it == pwallet->m_map_utxos.end()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, unknown outpoint");
         }
 
         if (pwallet->IsSpent(*locked_chain, outpt.hash, outpt.n)) {
