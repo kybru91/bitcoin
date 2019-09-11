@@ -37,15 +37,15 @@ namespace {
 WalletTx MakeWalletTx(interfaces::Chain::Lock& locked_chain, CWallet& wallet, const CWalletTx& wtx)
 {
     WalletTx result;
-    result.tx = wtx.tx;
-    result.txin_is_mine.reserve(wtx.tx->vin.size());
-    for (const auto& txin : wtx.tx->vin) {
+    result.tx = wtx.GetTx();
+    result.txin_is_mine.reserve(result.tx->vin.size());
+    for (const auto& txin : result.tx->vin) {
         result.txin_is_mine.emplace_back(wallet.IsMine(txin));
     }
-    result.txout_is_mine.reserve(wtx.tx->vout.size());
-    result.txout_address.reserve(wtx.tx->vout.size());
-    result.txout_address_is_mine.reserve(wtx.tx->vout.size());
-    for (const auto& txout : wtx.tx->vout) {
+    result.txout_is_mine.reserve(result.tx->vout.size());
+    result.txout_address.reserve(result.tx->vout.size());
+    result.txout_address_is_mine.reserve(result.tx->vout.size());
+    for (const auto& txout : result.tx->vout) {
         result.txout_is_mine.emplace_back(wallet.IsMine(txout));
         result.txout_address.emplace_back();
         result.txout_address_is_mine.emplace_back(ExtractDestination(txout.scriptPubKey, result.txout_address.back()) ?
@@ -69,8 +69,8 @@ WalletTxStatus MakeWalletTxStatus(interfaces::Chain::Lock& locked_chain, const C
     result.blocks_to_maturity = wtx.GetBlocksToMaturity(locked_chain);
     result.depth_in_main_chain = wtx.GetDepthInMainChain(locked_chain);
     result.time_received = wtx.nTimeReceived;
-    result.lock_time = wtx.tx->nLockTime;
-    result.is_final = locked_chain.checkFinalTx(*wtx.tx);
+    result.lock_time = wtx.stx.nLockTime;
+    result.is_final = locked_chain.checkFinalTx(CTransaction(wtx.stx));
     result.is_trusted = wtx.IsTrusted(locked_chain);
     result.is_abandoned = wtx.isAbandoned();
     result.is_coinbase = wtx.IsCoinBase();
@@ -276,7 +276,7 @@ public:
         LOCK(m_wallet->cs_wallet);
         auto mi = m_wallet->mapWallet.find(txid);
         if (mi != m_wallet->mapWallet.end()) {
-            return mi->second.tx;
+            return mi->second.GetTx();
         }
         return {};
     }
