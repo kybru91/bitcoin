@@ -1049,11 +1049,14 @@ bool CWallet::MarkReplaced(const uint256& originalHash, const uint256& newHash)
 
 void CWallet::SetUsedDestinationState(const uint256& hash, unsigned int n, bool used)
 {
-    const CWalletTx* srctx = GetWalletTx(hash);
-    if (!srctx) return;
+    const auto& it = m_map_utxos.find(COutPoint(hash, n));
+    if (it == m_map_utxos.end()) {
+        return;
+    }
+    const CTxOut& txout = it->second;
 
     CTxDestination dst;
-    if (ExtractDestination(srctx->tx->vout[n].scriptPubKey, dst)) {
+    if (ExtractDestination(txout.scriptPubKey, dst)) {
         if (::IsMine(*this, dst)) {
             LOCK(cs_wallet);
             if (used && !GetDestData(dst, "used", nullptr)) {
@@ -1074,8 +1077,12 @@ bool CWallet::IsUsedDestination(const CTxDestination& dst) const
 bool CWallet::IsUsedDestination(const uint256& hash, unsigned int n) const
 {
     CTxDestination dst;
-    const CWalletTx* srctx = GetWalletTx(hash);
-    return srctx && ExtractDestination(srctx->tx->vout[n].scriptPubKey, dst) && IsUsedDestination(dst);
+    const auto& it = m_map_utxos.find(COutPoint(hash, n));
+    if (it == m_map_utxos.end()) {
+        return false;
+    }
+    const CTxOut& txout = it->second;
+    return ExtractDestination(txout.scriptPubKey, dst) && IsUsedDestination(dst);
 }
 
 bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFlushOnClose)
@@ -3920,7 +3927,7 @@ std::set< std::set<CTxDestination> > CWallet::GetAddressGroupings()
                 CTxDestination address;
                 if(!IsMine(txin)) /* If this input isn't mine, ignore it */
                     continue;
-                if(!ExtractDestination(mapWallet.at(txin.prevout.hash).tx->vout[txin.prevout.n].scriptPubKey, address))
+                if(!ExtractDestination(m_map_utxos.at(txin.prevout).scriptPubKey, address))
                     continue;
                 grouping.insert(address);
                 any_mine = true;
@@ -3929,14 +3936,19 @@ std::set< std::set<CTxDestination> > CWallet::GetAddressGroupings()
             // group change with input addresses
             if (any_mine)
             {
-               for (const CTxOut& txout : wtx.tx->vout)
-                   if (IsChange(txout))
-                   {
-                       CTxDestination txoutAddr;
-                       if(!ExtractDestination(txout.scriptPubKey, txoutAddr))
-                           continue;
-                       grouping.insert(txoutAddr);
-                   }
+                for (int i = 0; i < wtx.stx.num_txouts; ++i) {
+                    const auto& it = m_map_utxos.find(COutPoint(wtx.GetHash(), i));
+                    if (it == m_map_utxos.end()) {
+                        continue;
+                    }
+                    const CTxOut& txout = it->second;
+                    if (IsChange(txout)) {
+                        CTxDestination txoutAddr;
+                        if(!ExtractDestination(txout.scriptPubKey, txoutAddr))
+                            continue;
+                        grouping.insert(txoutAddr);
+                    }
+                }
             }
             if (grouping.size() > 0)
             {
@@ -3946,7 +3958,12 @@ std::set< std::set<CTxDestination> > CWallet::GetAddressGroupings()
         }
 
         // group lone addrs by themselves
-        for (const auto& txout : wtx.tx->vout)
+        for (int i = 0; i < wtx.stx.num_txouts; ++i) {
+            const auto& it = m_map_utxos.find(COutPoint(wtx.GetHash(), i));
+            if (it == m_map_utxos.end()) {
+                continue;
+            }
+            const CTxOut& txout = it->second;
             if (IsMine(txout))
             {
                 CTxDestination address;
@@ -3956,6 +3973,7 @@ std::set< std::set<CTxDestination> > CWallet::GetAddressGroupings()
                 groupings.insert(grouping);
                 grouping.clear();
             }
+        }
     }
 
     std::set< std::set<CTxDestination>* > uniqueGroupings; // a set of pointers to groups of addresses
