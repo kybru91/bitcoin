@@ -2337,6 +2337,19 @@ bool CWalletTx::IsEquivalentTo(const CWalletTx& _tx) const
         return CTransaction(tx1) == CTransaction(tx2);
 }
 
+CTransactionRef CWalletTx::GetFullTx() const
+{
+    if (tx) {
+        return tx;
+    }
+    WalletBatch batch(pwallet->GetDBHandle());
+    CTransactionRef tx;
+    if (!batch.ReadTx(GetHash(), tx)) {
+        throw std::runtime_error(std::string(__func__) + ": Failed to read transaction from wallet");
+    }
+    return tx;
+}
+
 // Rebroadcast transactions from the wallet. We do this on a random timer
 // to slightly obfuscate which transactions come from our wallet.
 //

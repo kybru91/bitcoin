@@ -83,6 +83,11 @@ bool WalletBatch::EraseTx(uint256 hash)
     return EraseIC(std::make_pair(DBKeys::TX, hash));
 }
 
+bool WalletBatch::ReadTx(uint256 hash, CTransactionRef& tx)
+{
+    return m_batch.Read(std::make_pair(DBKeys::TX, hash), tx);
+}
+
 bool WalletBatch::WriteKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite)
 {
     return WriteIC(std::make_pair(DBKeys::KEYMETA, pubkey), meta, overwrite);

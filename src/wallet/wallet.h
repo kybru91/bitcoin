@@ -663,6 +663,7 @@ public:
     const uint256& GetHash() const { return tx->GetHash(); }
     bool IsCoinBase() const { return tx->IsCoinBase(); }
     bool IsImmatureCoinBase(interfaces::Chain::Lock& locked_chain) const;
+    CTransactionRef GetFullTx() const;
 };
 
 class COutput
@@ -892,7 +893,7 @@ public:
     /** Get database handle used by this wallet. Ideally this function would
      * not be necessary.
      */
-    WalletDatabase& GetDBHandle()
+    WalletDatabase& GetDBHandle() const
     {
         return *database;
     }
