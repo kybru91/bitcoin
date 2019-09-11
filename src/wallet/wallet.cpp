@@ -2344,6 +2344,14 @@ bool CWalletTx::IsEquivalentTo(const CWalletTx& _tx) const
 
 CTransactionRef CWalletTx::GetTx() const
 {
+    if (tx) {
+        return tx;
+    }
+    WalletBatch batch(pwallet->GetDBHandle());
+    CTransactionRef tx;
+    if (!batch.ReadTx(GetHash(), tx)) {
+        throw std::runtime_error(std::string(__func__) + ": Failed to read transaction from wallet");
+    }
     return tx;
 }
 
