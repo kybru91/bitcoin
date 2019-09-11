@@ -348,7 +348,7 @@ public:
         CMutableTransaction blocktx;
         {
             LOCK(wallet->cs_wallet);
-            blocktx = CMutableTransaction(*wallet->mapWallet.at(tx->GetHash()).tx);
+            blocktx = CMutableTransaction(*wallet->mapWallet.at(tx->GetHash()).GetTx());
         }
         CreateAndProcessBlock({CMutableTransaction(blocktx)}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
 

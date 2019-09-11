@@ -67,7 +67,7 @@ static void add_coin(const CAmount& nValue, int nAge = 6*24, bool fIsFromMe = fa
     {
         coins_from_me.insert(wtx->GetHash());
     }
-    COutput output(wtx->GetHash(), nInput, wtx->tx->vout[nInput], nAge, true /* spendable */, true /* solvable */, true /* safe */, &testWallet);
+    COutput output(wtx->GetHash(), nInput, wtx->GetTx()->vout[nInput], nAge, true /* spendable */, true /* solvable */, true /* safe */, &testWallet);
     vCoins.push_back(output);
     testWallet.AddToWallet(*wtx.get());
     wtxn.emplace_back(std::move(wtx));
