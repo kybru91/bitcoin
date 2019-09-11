@@ -451,6 +451,8 @@ private:
      */
     static const uint256 ABANDON_HASH;
 
+    CTransactionRef tx;
+
 public:
     /**
      * Key/value map with information about the transaction.
@@ -534,8 +536,6 @@ public:
         m_confirm = Confirmation{};
         tx_written = false;
     }
-
-    CTransactionRef tx;
 
     /* New transactions start as UNCONFIRMED. At BlockConnected,
      * they will transition to CONFIRMED. In case of reorg, at BlockDisconnected,
