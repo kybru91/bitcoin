@@ -735,7 +735,7 @@ std::set<uint256> CWallet::GetConflicts(const uint256& txid) const
 
     std::pair<TxSpends::const_iterator, TxSpends::const_iterator> range;
 
-    for (const CTxIn& txin : wtx.tx->vin)
+    for (const CTxIn& txin : wtx.stx.vin)
     {
         if (mapTxSpends.count(txin.prevout) <= 1)
             continue;  // No conflict if zero or one spends
@@ -840,7 +840,7 @@ void CWallet::AddToSpends(const uint256& wtxid)
     if (thisTx.IsCoinBase()) // Coinbases don't spend anything!
         return;
 
-    for (const CTxIn& txin : thisTx.tx->vin)
+    for (const CTxIn& txin : thisTx.stx.vin)
         AddToSpends(txin.prevout, wtxid);
 }
 
@@ -1088,7 +1088,7 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFlushOnClose)
 
     if (IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE)) {
         // Mark used destinations
-        for (const CTxIn& txin : wtxIn.tx->vin) {
+        for (const CTxIn& txin : wtxIn.stx.vin) {
             const COutPoint& op = txin.prevout;
             SetUsedDestinationState(op.hash, op.n, true);
         }
@@ -1187,7 +1187,7 @@ void CWallet::LoadToWallet(CWalletTx& wtxIn)
         wtx.m_it_wtxOrdered = wtxOrdered.insert(std::make_pair(wtx.nOrderPos, &wtx));
     }
     AddToSpends(hash);
-    for (const CTxIn& txin : wtx.tx->vin) {
+    for (const CTxIn& txin : wtx.stx.vin) {
         auto it = mapWallet.find(txin.prevout.hash);
         if (it != mapWallet.end()) {
             CWalletTx& prevtx = it->second;
@@ -1263,9 +1263,9 @@ bool CWallet::TransactionCanBeAbandoned(const uint256& hashTx) const
     return wtx && !wtx->isAbandoned() && wtx->GetDepthInMainChain(*locked_chain) == 0 && !wtx->InMempool();
 }
 
-void CWallet::MarkInputsDirty(const CTransactionRef& tx)
+void CWallet::MarkInputsDirty(const CTransaction& tx)
 {
-    for (const CTxIn& txin : tx->vin) {
+    for (const CTxIn& txin : tx.vin) {
         auto it = mapWallet.find(txin.prevout.hash);
         if (it != mapWallet.end()) {
             it->second.MarkDirty();
@@ -1322,7 +1322,7 @@ bool CWallet::AbandonTransaction(interfaces::Chain::Lock& locked_chain, const ui
             }
             // If a transaction changes 'conflicted' state, that changes the balance
             // available of the outputs it spends. So force those to be recomputed
-            MarkInputsDirty(wtx.tx);
+            MarkInputsDirty(CTransaction(wtx.stx));
         }
     }
 
@@ -1376,7 +1376,7 @@ void CWallet::MarkConflicted(const uint256& hashBlock, const uint256& hashTx)
             }
             // If a transaction changes 'conflicted' state, that changes the balance
             // available of the outputs it spends. So force those to be recomputed
-            MarkInputsDirty(wtx.tx);
+            MarkInputsDirty(CTransaction(wtx.stx));
         }
     }
 }
@@ -1389,7 +1389,7 @@ void CWallet::SyncTransaction(const CTransactionRef& ptx, CWalletTx::Status stat
     // If a transaction changes 'conflicted' state, that changes the balance
     // available of the outputs it spends. So force those to be
     // recomputed, also:
-    MarkInputsDirty(ptx);
+    MarkInputsDirty(*ptx);
 }
 
 void CWallet::TransactionAddedToMempool(const CTransactionRef& ptx) {
@@ -2520,7 +2520,7 @@ void CWallet::AvailableCoins(interfaces::Chain::Lock& locked_chain, std::vector<
         if (good_tx_it == checked_good_txids.end()) {
             checked_bad_txids.insert(wtxid);
 
-            if (!locked_chain.checkFinalTx(*wtx.tx)) {
+            if (!locked_chain.checkFinalTx(CTransaction(wtx.stx))) {
                 continue;
             }
 
@@ -3370,7 +3370,7 @@ bool CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::ve
             AddToWallet(wtxNew);
 
             // Notify that old coins are spent
-            for (const CTxIn& txin : wtxNew.tx->vin)
+            for (const CTxIn& txin : wtxNew.stx.vin)
             {
                 CWalletTx &coin = mapWallet.at(txin.prevout.hash);
                 coin.BindWallet(this);
@@ -3909,11 +3909,11 @@ std::set< std::set<CTxDestination> > CWallet::GetAddressGroupings()
     {
         const CWalletTx& wtx = walletEntry.second;
 
-        if (wtx.tx->vin.size() > 0)
+        if (wtx.stx.vin.size() > 0)
         {
             bool any_mine = false;
             // group all input addresses with each other
-            for (const CTxIn& txin : wtx.tx->vin)
+            for (const CTxIn& txin : wtx.stx.vin)
             {
                 CTxDestination address;
                 if(!IsMine(txin)) /* If this input isn't mine, ignore it */
