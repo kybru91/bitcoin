@@ -1136,8 +1136,8 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFlushOnClose)
         // wallet.  Store the new version of the transaction with the witness,
         // as the stripped-version must be invalid.
         // TODO: Store all versions of the transaction, instead of just one.
-        if (wtxIn.tx->HasWitness() && !wtx.tx->HasWitness()) {
-            wtx.SetTx(wtxIn.tx);
+        if (wtxIn.GetTx()->HasWitness() && !wtx.GetTx()->HasWitness()) {
+            wtx.SetTx(wtxIn.GetTx());
             fUpdated = true;
         }
     }
@@ -2335,8 +2335,8 @@ bool CWalletTx::IsTrusted(interfaces::Chain::Lock& locked_chain) const
 
 bool CWalletTx::IsEquivalentTo(const CWalletTx& _tx) const
 {
-        CMutableTransaction tx1 {*this->tx};
-        CMutableTransaction tx2 {*_tx.tx};
+        CMutableTransaction tx1 {*this->GetTx()};
+        CMutableTransaction tx2 {*_tx.GetTx()};
         for (auto& txin : tx1.vin) txin.scriptSig = CScript();
         for (auto& txin : tx2.vin) txin.scriptSig = CScript();
         return CTransaction(tx1) == CTransaction(tx2);
@@ -3371,7 +3371,7 @@ bool CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::ve
         wtxNew.fTimeReceivedIsTxTime = true;
         wtxNew.fFromMe = true;
 
-        WalletLogPrintf("CommitTransaction:\n%s", wtxNew.tx->ToString()); /* Continued */
+        WalletLogPrintf("CommitTransaction:\n%s", wtxNew.GetTx()->ToString()); /* Continued */
         {
 
             // Add tx to wallet, because if it has change it's also ours,
@@ -4159,7 +4159,8 @@ void CWallet::GetKeyBirthTimes(interfaces::Chain::Lock& locked_chain, std::map<C
         const CWalletTx &wtx = entry.second;
         if (Optional<int> height = locked_chain.getBlockHeight(wtx.m_confirm.hashBlock)) {
             // ... which are already in a block
-            for (const CTxOut &txout : wtx.tx->vout) {
+            CTransactionRef tx = wtx.GetTx();
+            for (const CTxOut &txout : tx->vout) {
                 // iterate over all their outputs
                 for (const auto &keyid : GetAffectedKeys(txout.scriptPubKey, *this)) {
                     // ... and all their affected keys
