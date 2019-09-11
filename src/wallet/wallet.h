@@ -653,6 +653,10 @@ public:
 
     void BindWallet(CWallet *pwalletIn)
     {
+        if (pwallet == pwalletIn) {
+            MarkDirty();
+            return;
+        }
         pwallet = pwalletIn;
         MarkDirty();
         LoadOutputsToWallet();
