@@ -5098,6 +5098,10 @@ void CWalletTx::LoadOutputsToWallet() const
 {
     assert(tx);
     for (int i = 0; i < tx->vout.size(); ++i) {
-        pwallet->m_map_utxos.emplace(COutPoint(stx.txid, i), tx->vout.at(i));
+        // If the wallet hasn't loaded all keys and scripts yet, IsMine won't return the correct thing.
+        // In that case, just always load the outputs.
+        if (!pwallet->m_keys_loaded || pwallet->IsMine(tx->vout.at(i)) != ISMINE_NO) {
+            pwallet->m_map_utxos.emplace(COutPoint(stx.txid, i), tx->vout.at(i));
+        }
     }
 }

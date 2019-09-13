@@ -986,6 +986,8 @@ public:
         return *database;
     }
 
+    bool m_keys_loaded = false;
+
     /**
      * Select a set of coins such that nValueRet >= nTargetValue and at least
      * all coins from coinControl are selected; Never select unconfirmed coins

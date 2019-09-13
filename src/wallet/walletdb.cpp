@@ -512,6 +512,16 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
     if (result != DBErrors::LOAD_OK)
         return result;
 
+    // Mark keys as loaded and remove outputs that aren't mine
+    pwallet->m_keys_loaded = true;
+    for (auto it = pwallet->m_map_utxos.cbegin(); it != pwallet->m_map_utxos.cend();) {
+        if (pwallet->IsMine(it->second) == ISMINE_NO) {
+            it = pwallet->m_map_utxos.erase(it);
+        } else {
+            it++;
+        }
+    }
+
     // Last client version to open this wallet, was previously the file version number
     int last_client = CLIENT_VERSION;
     m_batch.Read(DBKeys::VERSION, last_client);

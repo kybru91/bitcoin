@@ -99,6 +99,24 @@ class PSBTTest(BitcoinTestFramework):
         p2pkh = self.nodes[1].getnewaddress("", "legacy")
         p2sh_p2wpkh = self.nodes[1].getnewaddress("", "p2sh-segwit")
 
+        # Add them to node 1 so they are watched
+        self.nodes[1].importmulti([
+            {
+                "scriptPubKey": {"address": p2sh},
+                "watchonly": True,
+                "timestamp": "now"
+            },
+            {
+                "scriptPubKey": {"address": p2wsh},
+                "watchonly": True,
+                "timestamp": "now"
+            },
+            {
+                "scriptPubKey": {"address": p2sh_p2wsh},
+                "watchonly": True,
+                "timestamp": "now"
+            }])
+
         # fund those addresses
         rawtx = self.nodes[0].createrawtransaction([], {p2sh:10, p2wsh:10, p2wpkh:10, p2sh_p2wsh:10, p2sh_p2wpkh:10, p2pkh:10})
         rawtx = self.nodes[0].fundrawtransaction(rawtx, {"changePosition":3})
