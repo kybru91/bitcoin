@@ -426,6 +426,17 @@ struct StrippedTx : CMutableTransaction
     }
 };
 
+class ConstStrippedTx : public CTransaction
+{
+public:
+    uint256 txid;
+
+    explicit ConstStrippedTx(const StrippedTx &tx) : CTransaction::CTransaction(tx), txid(tx.txid) {}
+    ConstStrippedTx(StrippedTx &&tx) : CTransaction::CTransaction(tx), txid(tx.txid) {}
+
+    const uint256& GetHash() const override { return txid; }
+};
+
 /**
  * A transaction with a bunch of additional info that only the owner cares about.
  * It includes any unrecorded transactions needed to link it back to the block chain.
