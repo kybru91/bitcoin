@@ -4254,6 +4254,7 @@ bool CWallet::Verify(interfaces::Chain& chain, const WalletLocation& location, b
 
 std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain, const WalletLocation& location, uint64_t wallet_creation_flags)
 {
+    int64_t time_start = GetTimeMicros();
     const std::string walletFile = WalletDataFilePath(location.GetPath()).string();
 
     // needed to restore wallet transaction meta data after -zapwallettxes
@@ -4597,6 +4598,8 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         walletInstance->WalletLogPrintf("mapAddressBook.size() = %u\n",  walletInstance->mapAddressBook.size());
     }
 
+    int64_t time_end = GetTimeMicros();
+    walletInstance->WalletLogPrintf("Wallet loading: %.2fms\n", 0.001 * (time_end - time_start));
     return walletInstance;
 }
 

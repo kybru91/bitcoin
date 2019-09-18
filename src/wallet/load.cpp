@@ -81,6 +81,7 @@ void StartWallets(CScheduler& scheduler)
     for (const std::shared_ptr<CWallet>& pwallet : GetWallets()) {
         pwallet->postInitProcess();
     }
+    assert(false);
 
     // Schedule periodic wallet flushes and tx rebroadcasts
     scheduler.scheduleEvery(MaybeCompactWalletDB, 500);
