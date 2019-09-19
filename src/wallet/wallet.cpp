@@ -1196,6 +1196,7 @@ void CWallet::LoadToWallet(CWalletTx& wtxIn)
             }
         }
     }
+    wtx.full_tx = nullptr;
 }
 
 bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, CWalletTx::Status status, const uint256& block_hash, int posInBlock, bool fUpdate)
@@ -1249,7 +1250,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransactionRef& ptx, CWalletTx::St
             // which means user may have to call abandontransaction again
             wtx.SetConf(status, block_hash, posInBlock);
 
-            return AddToWallet(wtx, false);
+            if (AddToWallet(wtx, false)) {
+                wtx.full_tx = nullptr;
+                return true;
+            }
+            return false;
         }
     }
     return false;
@@ -3342,6 +3347,7 @@ bool CWallet::CommitTransaction(CTransactionRef tx, mapValue_t mapValue, std::ve
                 // TODO: if we expect the failure to be long term or permanent, instead delete wtx from the wallet and return failure.
             }
         }
+        wtx.full_tx = nullptr;
     }
     return true;
 }
