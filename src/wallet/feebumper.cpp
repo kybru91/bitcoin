@@ -85,6 +85,7 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
         return Result::INVALID_ADDRESS_OR_KEY;
     }
     const CWalletTx& wtx = it->second;
+    CTransactionRef tx = wtx.GetFullTx();
 
     Result result = PreconditionChecks(*locked_chain, wallet, wtx, errors);
     if (result != Result::OK) {
@@ -94,8 +95,8 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
     // figure out which output was change
     // if there was no change output or multiple change outputs, fail
     int nOutput = -1;
-    for (size_t i = 0; i < wtx.tx->vout.size(); ++i) {
-        if (wallet->IsChange(wtx.tx->vout[i])) {
+    for (size_t i = 0; i < tx->vout.size(); ++i) {
+        if (wallet->IsChange(tx->vout[i])) {
             if (nOutput != -1) {
                 errors.push_back("Transaction has multiple change outputs");
                 return Result::WALLET_ERROR;
@@ -109,15 +110,15 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
     }
 
     // Calculate the expected size of the new transaction.
-    int64_t txSize = GetVirtualTransactionSize(*(wtx.tx));
-    const int64_t maxNewTxSize = CalculateMaximumSignedTxSize(*wtx.tx, wallet);
+    int64_t txSize = GetVirtualTransactionSize(*tx);
+    const int64_t maxNewTxSize = CalculateMaximumSignedTxSize(*tx, wallet);
     if (maxNewTxSize < 0) {
         errors.push_back("Transaction contains inputs that cannot be signed");
         return Result::INVALID_ADDRESS_OR_KEY;
     }
 
     // calculate the old fee and fee-rate
-    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOut();
+    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - tx->GetValueOut();
     CFeeRate nOldFeeRate(old_fee, txSize);
     // The wallet uses a conservative WALLET_INCREMENTAL_RELAY_FEE value to
     // future proof against changes to network wide policy for incremental relay
@@ -170,7 +171,7 @@ Result CreateTotalBumpTransaction(const CWallet* wallet, const uint256& txid, co
     // If the output is not large enough to pay the fee, fail.
     CAmount nDelta = new_fee - old_fee;
     assert(nDelta > 0);
-    mtx = CMutableTransaction{*wtx.tx};
+    mtx = CMutableTransaction{*tx};
     CTxOut* poutput = &(mtx.vout[nOutput]);
     if (poutput->nValue < nDelta) {
         errors.push_back("Change output is too small to bump the fee");
@@ -211,6 +212,7 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
         return Result::INVALID_ADDRESS_OR_KEY;
     }
     const CWalletTx& wtx = it->second;
+    CTransactionRef tx = wtx.GetFullTx();
 
     Result result = PreconditionChecks(*locked_chain, wallet, wtx, errors);
     if (result != Result::OK) {
@@ -219,7 +221,7 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
 
     // Fill in recipients(and preserve a single change key if there is one)
     std::vector<CRecipient> recipients;
-    for (const auto& output : wtx.tx->vout) {
+    for (const auto& output : tx->vout) {
         if (!wallet->IsChange(output)) {
             CRecipient recipient = {output.scriptPubKey, output.nValue, false};
             recipients.push_back(recipient);
@@ -233,8 +235,8 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
     // Get the fee rate of the original transaction. This is calculated from
     // the tx fee/vsize, so it may have been rounded down. Add 1 satoshi to the
     // result.
-    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - wtx.tx->GetValueOut();
-    int64_t txSize = GetVirtualTransactionSize(*(wtx.tx));
+    old_fee = wtx.GetDebit(ISMINE_SPENDABLE) - tx->GetValueOut();
+    int64_t txSize = GetVirtualTransactionSize(*(tx));
     // Feerate of thing we are bumping
     CFeeRate feerate(old_fee, txSize);
     feerate += CFeeRate(1);
@@ -263,7 +265,7 @@ Result CreateRateBumpTransaction(CWallet* wallet, const uint256& txid, const CCo
     // A2 and A3 where A2 and A3 don't conflict (or alternatively bump A to A2 and A2
     // to A3 where A and A3 don't conflict). If both later get confirmed then the sender
     // has accidentally double paid.
-    for (const auto& inputs : wtx.tx->vin) {
+    for (const auto& inputs : tx->vin) {
         new_coin_control.Select(COutPoint(inputs.prevout));
     }
     new_coin_control.fAllowOtherInputs = true;

@@ -1738,12 +1738,13 @@ static UniValue gettransaction(const JSONRPCRequest& request)
     ListTransactions(*locked_chain, pwallet, wtx, 0, false, details, filter, nullptr /* filter_label */);
     entry.pushKV("details", details);
 
-    std::string strHex = EncodeHexTx(*wtx.tx, pwallet->chain().rpcSerializationFlags());
+    CTransactionRef tx = wtx.GetFullTx();
+    std::string strHex = EncodeHexTx(*tx, pwallet->chain().rpcSerializationFlags());
     entry.pushKV("hex", strHex);
 
     if (verbose) {
         UniValue decoded(UniValue::VOBJ);
-        TxToUniv(*wtx.tx, uint256(), decoded, false);
+        TxToUniv(*tx, uint256(), decoded, false);
         entry.pushKV("decoded", decoded);
     }
 
