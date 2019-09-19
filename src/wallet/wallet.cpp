@@ -1139,9 +1139,11 @@ bool CWallet::AddToWallet(const CWalletTx& wtxIn, bool fFlushOnClose)
     WalletLogPrintf("AddToWallet %s  %s%s\n", wtxIn.GetHash().ToString(), (fInsertedNew ? "new" : ""), (fUpdated ? "update" : ""));
 
     // Write to disk
-    if (fInsertedNew || fUpdated)
+    if (fInsertedNew || fUpdated) {
         if (!batch.WriteTx(wtx))
             return false;
+        wtx.tx_written = true;
+    }
 
     // Break debit/credit balance caches:
     wtx.MarkDirty();
@@ -2339,8 +2341,8 @@ bool CWalletTx::IsEquivalentTo(const CWalletTx& _tx) const
 
 CTransactionRef CWalletTx::GetFullTx() const
 {
-    if (tx) {
-        return tx;
+    if (full_tx) {
+        return full_tx;
     }
     WalletBatch batch(pwallet->GetDBHandle());
     CTransactionRef tx;

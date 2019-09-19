@@ -75,6 +75,9 @@ bool WalletBatch::ErasePurpose(const std::string& strAddress)
 
 bool WalletBatch::WriteTx(const CWalletTx& wtx)
 {
+    if (wtx.tx_written) {
+        return WriteIC(std::make_pair(DBKeys::TX, wtx.GetHash()), wtx, true, wtx.tx->tx_size);
+    }
     return WriteIC(std::make_pair(DBKeys::TX, wtx.GetHash()), wtx);
 }
 

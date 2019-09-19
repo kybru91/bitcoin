@@ -387,6 +387,66 @@ public:
 //Get the marginal bytes of spending the specified output
 int CalculateMaximumSignedInputSize(const CTxOut& txout, const CWallet* pwallet, bool use_max_sig = false);
 
+struct StrippedTx : CMutableTransaction
+{
+    uint256 txid;
+    size_t tx_size;
+
+    void StripTransaction()
+    {
+        for (CTxIn& txin : vin) {
+            txin.scriptSig.clear();
+            txin.scriptWitness.SetNull();
+        }
+    }
+
+    template <typename Stream>
+    inline void Unserialize(Stream& s) {
+        size_t tx_begin = s.size();
+        UnserializeTransaction(*this, s);
+        txid = GetHash();
+        tx_size = tx_begin - s.size();
+        StripTransaction();
+    }
+
+    StrippedTx(CTransactionRef tx)
+    {
+        vin = tx->vin;
+        vout = tx->vout;
+        nVersion = tx->nVersion;
+        nLockTime = tx->nLockTime;
+        txid = tx->GetHash();
+        tx_size = tx->GetTotalSize();
+        StripTransaction();
+    }
+
+    template <typename Stream>
+    StrippedTx(deserialize_type, Stream& s) {
+        Unserialize(s);
+    }
+};
+
+class ConstStrippedTx : public CTransaction
+{
+public:
+    uint256 txid;
+    size_t tx_size;
+
+    using CTransaction::CTransaction;
+    explicit ConstStrippedTx(const StrippedTx &tx) : CTransaction::CTransaction(tx), txid(tx.txid), tx_size(tx.tx_size) {}
+    ConstStrippedTx(StrippedTx &&tx) : CTransaction::CTransaction(tx), txid(tx.txid), tx_size(tx.tx_size) {}
+    ConstStrippedTx(CTransactionRef tx) : ConstStrippedTx(StrippedTx(tx)) {}
+
+    template <typename Stream>
+    ConstStrippedTx(deserialize_type, Stream& s) : ConstStrippedTx(StrippedTx(deserialize, s)) {}
+
+    const uint256& GetHash() const override { return txid; }
+};
+
+typedef std::shared_ptr<const ConstStrippedTx> ConstStrippedTxRef;
+static inline ConstStrippedTxRef MakeConstStrippedTxRef() { return std::make_shared<const ConstStrippedTx>(); }
+template <typename Tx> static inline ConstStrippedTxRef MakeConstStrippedTxRef(Tx&& txIn) { return std::make_shared<const ConstStrippedTx>(std::forward<Tx>(txIn)); }
+
 /**
  * A transaction with a bunch of additional info that only the owner cares about.
  * It includes any unrecorded transactions needed to link it back to the block chain.
@@ -450,6 +510,9 @@ public:
     int64_t nOrderPos; //!< position in ordered transaction list
     std::multimap<int64_t, CWalletTx*>::const_iterator m_it_wtxOrdered;
 
+    bool tx_written;
+    ConstStrippedTxRef tx;
+
     // memory only
     enum AmountType { DEBIT, CREDIT, IMMATURE_CREDIT, AVAILABLE_CREDIT, AMOUNTTYPE_ENUM_ELEMENTS };
     CAmount GetCachableAmount(AmountType type, const isminefilter& filter, bool recalculate = false) const;
@@ -459,8 +522,9 @@ public:
     mutable CAmount nChangeCached;
 
     CWalletTx(const CWallet* pwalletIn, CTransactionRef arg)
-        : tx(std::move(arg))
+        : full_tx(arg)
     {
+        tx = std::make_shared<ConstStrippedTx>(std::move(arg));
         Init(pwalletIn);
     }
 
@@ -478,9 +542,10 @@ public:
         nChangeCached = 0;
         nOrderPos = -1;
         m_confirm = Confirmation{};
+        tx_written = false;
     }
 
-    CTransactionRef tx;
+    CTransactionRef full_tx;
 
     /* New transactions start as UNCONFIRMED. At BlockConnected,
      * they will transition to CONFIRMED. In case of reorg, at BlockDisconnected,
@@ -509,6 +574,7 @@ public:
 
     Confirmation m_confirm;
 
+    // tx_written must be updated by the caller after any time CWalletTx is serialized to the wallet db
     template<typename Stream>
     void Serialize(Stream& s) const
     {
@@ -525,7 +591,10 @@ public:
         bool dummy_bool = false; //!< Used to be fSpent
         uint256 serializedHash = isAbandoned() ? ABANDON_HASH : m_confirm.hashBlock;
         int serializedIndex = isAbandoned() || isConflicted() ? -1 : m_confirm.nIndex;
-        s << tx << serializedHash << dummy_vector1 << serializedIndex << dummy_vector2 << mapValueCopy << vOrderForm << fTimeReceivedIsTxTime << nTimeReceived << fFromMe << dummy_bool;
+        if (!tx_written) {
+            s << full_tx;
+        }
+        s << serializedHash << dummy_vector1 << serializedIndex << dummy_vector2 << mapValueCopy << vOrderForm << fTimeReceivedIsTxTime << nTimeReceived << fFromMe << dummy_bool;
     }
 
     template<typename Stream>
@@ -563,11 +632,15 @@ public:
         mapValue.erase("spent");
         mapValue.erase("n");
         mapValue.erase("timesmart");
+
+        tx_written = true;
     }
 
     void SetTx(CTransactionRef arg)
     {
-        tx = std::move(arg);
+        full_tx = arg;
+        tx = std::make_shared<ConstStrippedTx>(std::move(arg));
+        tx_written = false;
     }
 
     //! make sure balances are recalculated
