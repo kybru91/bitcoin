@@ -8,8 +8,10 @@
 
 #include <stdint.h>
 #include <amount.h>
+#include <hash.h>
 #include <script/script.h>
 #include <serialize.h>
+#include <streams.h>
 #include <uint256.h>
 
 static const int SERIALIZE_TRANSACTION_NO_WITNESS = 0x40000000;
@@ -199,7 +201,17 @@ template<typename Stream, typename TxType>
 inline void UnserializeTransaction(TxType& tx, Stream& s) {
     const bool fAllowWitness = !(s.GetVersion() & SERIALIZE_TRANSACTION_NO_WITNESS);
 
+    std::vector<unsigned char> buffer;
+    buffer.reserve(1000);
+    CVectorWriter buf_writer(0, 0, buffer, 0);
+
+    size_t vin_end = 0;
+    size_t vout_end = 0;
+    bool is_witness = false;
+
     s >> tx.nVersion;
+    buf_writer << tx.nVersion;
+
     unsigned char flags = 0;
     tx.vin.clear();
     tx.vout.clear();
@@ -209,18 +221,38 @@ inline void UnserializeTransaction(TxType& tx, Stream& s) {
         /* We read a dummy or an empty vin. */
         s >> flags;
         if (flags != 0) {
+            is_witness = true;
+
+            buf_writer << (char)0x00;
+            buf_writer << flags;
+
             s >> tx.vin;
+            buf_writer << tx.vin;
+            vin_end = buffer.size();
+
             s >> tx.vout;
+            buf_writer << tx.vout;
+            vout_end = buffer.size();
+        } else {
+            // Special case, only seen in tests
+            buf_writer << (char)0x00; // vin is 0
+            buf_writer << (char)0x00; // vout is 0 becaues it isn't unserialized
         }
     } else {
         /* We read a non-empty vin. Assume a normal vout follows. */
+        buf_writer << tx.vin;
+        vin_end = buffer.size();
+
         s >> tx.vout;
+        buf_writer << tx.vout;
+        vout_end = buffer.size();
     }
     if ((flags & 1) && fAllowWitness) {
         /* The witness flag is present, and we support witnesses. */
         flags ^= 1;
         for (size_t i = 0; i < tx.vin.size(); i++) {
             s >> tx.vin[i].scriptWitness.stack;
+            buf_writer << tx.vin[i].scriptWitness.stack;
         }
         if (!tx.HasWitness()) {
             /* It's illegal to encode witnesses when all witness stacks are empty. */
@@ -231,7 +263,28 @@ inline void UnserializeTransaction(TxType& tx, Stream& s) {
         /* Unknown flag in the serialization */
         throw std::ios_base::failure("Unknown transaction optional data");
     }
+
     s >> tx.nLockTime;
+    buf_writer << tx.nLockTime;
+
+    CHashWriter txid_hasher(SER_GETHASH, SERIALIZE_TRANSACTION_NO_WITNESS);
+    if (is_witness) {
+        txid_hasher.write((char*)buffer.data(), 4); // nVersion
+        txid_hasher.write((char*)buffer.data() + 6, vin_end - 6); // vin
+        txid_hasher.write((char*)buffer.data() + vin_end, vout_end - vin_end); // vout
+        txid_hasher.write((char*)buffer.data() + buffer.size() - 4, 4); // nLocktime
+        tx.m_txid = txid_hasher.GetHash();
+
+        CHashWriter witness_hasher(SER_GETHASH, 0);
+        witness_hasher.write((char*)buffer.data(), buffer.size()); // Witness hash is hash of full tx
+        tx.m_witness_hash = witness_hasher.GetHash();
+    } else {
+        txid_hasher.write((char*)buffer.data(), buffer.size()); // Non-witness txid is hash of full tx
+        tx.m_txid = txid_hasher.GetHash();
+        tx.m_witness_hash = tx.m_txid;
+    }
+
+    tx.m_total_size = buffer.size();
 }
 
 template<typename Stream, typename TxType>
@@ -365,6 +418,11 @@ public:
 /** A mutable version of CTransaction. */
 struct CMutableTransaction
 {
+    // Don't use these outside of UnserializeTransaction
+    uint256 m_txid;
+    uint256 m_witness_hash;
+    unsigned int m_total_size;
+
     std::vector<CTxIn> vin;
     std::vector<CTxOut> vout;
     int32_t nVersion;
