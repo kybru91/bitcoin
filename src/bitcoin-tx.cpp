@@ -675,6 +675,9 @@ static void MutateTx(CMutableTransaction& tx, const std::string& command,
                      const std::string& commandVal)
 {
     std::unique_ptr<Secp256k1Init> ecc;
+    // Invalidate cached hashes because we are about to modify this tx
+    tx.m_txid.SetNull();
+    tx.m_witness_hash.SetNull();
 
     if (command == "nversion")
         MutateTxVersion(tx, commandVal);
