@@ -678,6 +678,7 @@ static void MutateTx(CMutableTransaction& tx, const std::string& command,
     // Invalidate cached hashes because we are about to modify this tx
     tx.m_txid.SetNull();
     tx.m_witness_hash.SetNull();
+    tx.m_total_size = 0;
 
     if (command == "nversion")
         MutateTxVersion(tx, commandVal);

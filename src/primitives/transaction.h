@@ -346,6 +346,7 @@ private:
     /** Memory only. */
     const uint256 hash;
     const uint256 m_witness_hash;
+    const unsigned int m_total_size = 0;
 
     uint256 ComputeHash() const;
     uint256 ComputeWitnessHash() const;
