@@ -385,8 +385,7 @@ bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const C
     }
 
     if (meta) {
-        mapKeyMetadata[pubkey.GetID()] = *meta;
-        if (!batch.WriteKeyMetadata(*meta, pubkey, true)) {
+        if (!AddKeyMetadata(pubkey, *meta, &batch)) {
             throw std::runtime_error(std::string(__func__) + ": Writing key metadata failed");
         }
     }
