@@ -882,6 +882,12 @@ private:
     //! Fetches a key from the keypool
     bool GetKeyFromPool(CPubKey &key, bool internal = false);
 
+    // Map from Key ID to key metadata.
+    std::map<CKeyID, CKeyMetadata> mapKeyMetadata GUARDED_BY(cs_wallet);
+
+    // Map from Script ID to key metadata (for watch-only keys).
+    std::map<CScriptID, CKeyMetadata> m_script_metadata GUARDED_BY(cs_wallet);
+
 public:
     /*
      * Main wallet lock.
@@ -914,14 +920,8 @@ public:
     void LoadKeyPool(int64_t nIndex, const CKeyPool &keypool) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     void MarkPreSplitKeys() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
-    // Map from Key ID to key metadata.
-    std::map<CKeyID, CKeyMetadata> mapKeyMetadata GUARDED_BY(cs_wallet);
-
     //! Get an existing CKeyMetadata
     bool GetKeyMetadata(const CKeyID& id, CKeyMetadata& meta) const;
-
-    // Map from Script ID to key metadata (for watch-only keys).
-    std::map<CScriptID, CKeyMetadata> m_script_metadata GUARDED_BY(cs_wallet);
 
     //! Add a CKeyMetadata
     bool AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch = nullptr, bool mem_only = false);
