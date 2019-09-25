@@ -929,6 +929,9 @@ public:
     //! Get an existing CKeyMetadata for scripts
     bool GetScriptMetadata(const CScriptID& id, CKeyMetadata& meta) const;
 
+    //! Add a script's CKeyMetadata
+    bool AddScriptMetadata(const CScript& script, const CKeyMetadata& meta, WalletBatch* batch = nullptr, bool mem_only = false);
+
     typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
     MasterKeyMap mapMasterKeys;
     unsigned int nMasterKeyMaxID = 0;

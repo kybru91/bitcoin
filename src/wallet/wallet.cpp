@@ -4996,3 +4996,16 @@ bool CWallet::GetScriptMetadata(const CScriptID& id, CKeyMetadata& meta) const
     }
     return false;
 }
+
+bool CWallet::AddScriptMetadata(const CScript& script, const CKeyMetadata& meta, WalletBatch* batch, bool mem_only)
+{
+    m_script_metadata[CScriptID(script)] = meta;
+    if (!mem_only) {
+        if (batch) {
+            return batch->WriteScriptMetadata(script, meta);
+        }
+        return WalletBatch(*database).WriteScriptMetadata(script, meta);
+    } else {
+        return true;
+    }
+}
