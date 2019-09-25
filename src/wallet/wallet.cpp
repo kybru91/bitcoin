@@ -430,6 +430,9 @@ void CWallet::LoadKeyMetadata(const CKeyID& keyID, const CKeyMetadata& meta)
     AssertLockHeld(cs_wallet);
     UpdateTimeFirstKey(meta.nCreateTime);
     mapKeyMetadata[keyID] = meta;
+    if (meta.nVersion >= CKeyMetadata::VERSION_WITH_KEY_ORIGIN) {
+        m_keymeta_to_upgrade[keyID] = meta;
+    }
 }
 
 void CWallet::LoadScriptMetadata(const CScriptID& script_id, const CKeyMetadata& meta)
@@ -447,7 +450,7 @@ void CWallet::UpgradeKeyMetadata()
     }
 
     std::unique_ptr<WalletBatch> batch = MakeUnique<WalletBatch>(*database);
-    for (auto& meta_pair : mapKeyMetadata) {
+    for (auto& meta_pair : m_keymeta_to_upgrade) {
         CKeyMetadata& meta = meta_pair.second;
         if (!meta.hd_seed_id.IsNull() && !meta.has_key_origin && meta.hdKeypath != "s") { // If the hdKeypath is "s", that's the seed and it doesn't have a key origin
             CKey key;
@@ -474,6 +477,7 @@ void CWallet::UpgradeKeyMetadata()
     }
     batch.reset(); //write before setting the flag
     SetWalletFlag(WALLET_FLAG_KEY_ORIGIN_METADATA);
+    m_keymeta_to_upgrade.clear(); // Safe to clear because we have now upgraded all the key metadata
 }
 
 bool CWallet::LoadCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
