@@ -119,12 +119,14 @@ bool WalletBatch::WriteCScript(const uint160& hash, const CScript& redeemScript)
     return WriteIC(std::make_pair(DBKeys::CSCRIPT, hash), redeemScript, false);
 }
 
-bool WalletBatch::WriteWatchOnly(const CScript &dest, const CKeyMetadata& keyMeta)
+bool WalletBatch::WriteWatchOnly(const CScript &dest)
 {
-    if (!WriteIC(std::make_pair(DBKeys::WATCHMETA, dest), keyMeta)) {
-        return false;
-    }
     return WriteIC(std::make_pair(DBKeys::WATCHS, dest), '1');
+}
+
+bool WalletBatch::WriteScriptMetadata(const CScript& script, const CKeyMetadata& meta)
+{
+    return WriteIC(std::make_pair(DBKeys::WATCHMETA, script), meta);
 }
 
 bool WalletBatch::EraseWatchOnly(const CScript &dest)

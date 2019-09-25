@@ -555,7 +555,7 @@ bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest)
     const CKeyMetadata& meta = m_script_metadata[CScriptID(dest)];
     UpdateTimeFirstKey(meta.nCreateTime);
     NotifyWatchonlyChanged(true);
-    if (batch.WriteWatchOnly(dest, meta)) {
+    if (batch.WriteScriptMetadata(dest, meta) && batch.WriteWatchOnly(dest)) {
         UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
         return true;
     }
