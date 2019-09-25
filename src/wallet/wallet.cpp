@@ -4048,10 +4048,23 @@ void CWallet::GetKeyBirthTimes(interfaces::Chain::Lock& locked_chain, std::map<C
     AssertLockHeld(cs_wallet);
     mapKeyBirth.clear();
 
-    // get birth times for keys with metadata
-    for (const auto& entry : mapKeyMetadata) {
-        if (entry.second.nCreateTime) {
-            mapKeyBirth[entry.first] = entry.second.nCreateTime;
+    // get birth times for all keys from their metadata
+    for (const auto& entry : mapKeys) {
+        CKeyMetadata meta;
+        if (GetKeyMetadata(entry.first, meta)) {
+            mapKeyBirth[entry.first] = meta.nCreateTime;
+        }
+    }
+    for (const auto& entry : mapCryptedKeys) {
+        CKeyMetadata meta;
+        if (GetKeyMetadata(entry.first, meta)) {
+            mapKeyBirth[entry.first] = meta.nCreateTime;
+        }
+    }
+    for (const auto& entry : mapWatchKeys) {
+        CKeyMetadata meta;
+        if (GetKeyMetadata(entry.first, meta)) {
+            mapKeyBirth[entry.first] = meta.nCreateTime;
         }
     }
 
