@@ -3554,8 +3554,10 @@ void CWallet::LoadKeyPool(int64_t nIndex, const CKeyPool &keypool)
     // creation time. Note that this may be overwritten by actually
     // stored metadata for that key later, which is fine.
     CKeyID keyid = keypool.vchPubKey.GetID();
-    if (mapKeyMetadata.count(keyid) == 0)
-        mapKeyMetadata[keyid] = CKeyMetadata(keypool.nTime);
+    CKeyMetadata meta(keypool.nTime);
+    if (!GetKeyMetadata(keyid, meta)) {
+        AddKeyMetadata(keypool.vchPubKey, meta, nullptr, true);
+    }
 }
 
 bool CWallet::TopUpKeyPool(unsigned int kpSize)
