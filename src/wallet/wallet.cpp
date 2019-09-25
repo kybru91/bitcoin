@@ -548,14 +548,13 @@ bool CWallet::AddWatchOnlyInMem(const CScript &dest)
     return true;
 }
 
-bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest)
+bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest, CKeyMetadata* meta)
 {
     if (!AddWatchOnlyInMem(dest))
         return false;
-    const CKeyMetadata& meta = m_script_metadata[CScriptID(dest)];
-    UpdateTimeFirstKey(meta.nCreateTime);
+    UpdateTimeFirstKey(meta->nCreateTime);
     NotifyWatchonlyChanged(true);
-    if (batch.WriteScriptMetadata(dest, meta) && batch.WriteWatchOnly(dest)) {
+    if (batch.WriteScriptMetadata(dest, *meta) && batch.WriteWatchOnly(dest)) {
         UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
         return true;
     }
@@ -564,8 +563,9 @@ bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest)
 
 bool CWallet::AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest, int64_t create_time)
 {
-    m_script_metadata[CScriptID(dest)].nCreateTime = create_time;
-    return AddWatchOnlyWithDB(batch, dest);
+    CKeyMetadata meta(create_time);
+    AddScriptMetadata(dest, meta, &batch);
+    return AddWatchOnlyWithDB(batch, dest, &meta);
 }
 
 bool CWallet::AddWatchOnly(const CScript& dest)
@@ -576,8 +576,10 @@ bool CWallet::AddWatchOnly(const CScript& dest)
 
 bool CWallet::AddWatchOnly(const CScript& dest, int64_t nCreateTime)
 {
-    m_script_metadata[CScriptID(dest)].nCreateTime = nCreateTime;
-    return AddWatchOnly(dest);
+    CKeyMetadata meta(nCreateTime);
+    WalletBatch batch(*database);
+    AddScriptMetadata(dest, meta, &batch);
+    return AddWatchOnlyWithDB(batch, dest, &meta);
 }
 
 bool CWallet::RemoveWatchOnly(const CScript &dest)

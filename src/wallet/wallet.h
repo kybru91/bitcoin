@@ -838,7 +838,7 @@ private:
      * nTimeFirstKey more intelligently for more efficient rescans.
      */
     bool AddWatchOnly(const CScript& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
-    bool AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
+    bool AddWatchOnlyWithDB(WalletBatch &batch, const CScript& dest, CKeyMetadata* meta = nullptr) EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     bool AddWatchOnlyInMem(const CScript &dest);
 
     /** Add a KeyOriginInfo to the wallet */
