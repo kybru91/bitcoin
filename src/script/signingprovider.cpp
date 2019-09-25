@@ -38,20 +38,17 @@ bool HidingSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const
     return m_provider->GetKey(keyid, key);
 }
 
-bool HidingSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
+bool HidingSigningProvider::GetKeyOrigin(const CPubKey& pubkey, KeyOriginInfo& info) const
 {
     if (m_hide_origin) return false;
-    return m_provider->GetKeyOrigin(keyid, info);
+    return m_provider->GetKeyOrigin(pubkey, info);
 }
 
 bool FlatSigningProvider::GetCScript(const CScriptID& scriptid, CScript& script) const { return LookupHelper(scripts, scriptid, script); }
 bool FlatSigningProvider::GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const { return LookupHelper(pubkeys, keyid, pubkey); }
-bool FlatSigningProvider::GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const
+bool FlatSigningProvider::GetKeyOrigin(const CPubKey& pubkey, KeyOriginInfo& info) const
 {
-    std::pair<CPubKey, KeyOriginInfo> out;
-    bool ret = LookupHelper(origins, keyid, out);
-    if (ret) info = std::move(out.second);
-    return ret;
+    return LookupHelper(origins, pubkey, info);
 }
 bool FlatSigningProvider::GetKey(const CKeyID& keyid, CKey& key) const { return LookupHelper(keys, keyid, key); }
 

@@ -76,7 +76,7 @@ static bool CreateSig(const BaseSignatureCreator& creator, SignatureData& sigdat
         return true;
     }
     KeyOriginInfo info;
-    if (provider.GetKeyOrigin(keyid, info)) {
+    if (provider.GetKeyOrigin(pubkey, info)) {
         sigdata.misc_pubkeys.emplace(keyid, std::make_pair(pubkey, std::move(info)));
     }
     if (creator.CreateSig(provider, sig_out, keyid, scriptcode, sigversion)) {

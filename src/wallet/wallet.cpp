@@ -1835,11 +1835,11 @@ bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const in
     return true;
 }
 
-bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const std::map<CKeyID, CPubKey>& pubkey_map, const std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>>& key_origins, const bool add_keypool, const bool internal, const int64_t timestamp)
+bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const std::map<CKeyID, CPubKey>& pubkey_map, const std::map<CPubKey, KeyOriginInfo>& key_origins, const bool add_keypool, const bool internal, const int64_t timestamp)
 {
     WalletBatch batch(*database);
     for (const auto& entry : key_origins) {
-        AddKeyOriginWithDB(batch, entry.second.first, entry.second.second);
+        AddKeyOriginWithDB(batch, entry.first, entry.second);
     }
     for (const CKeyID& id : ordered_pubkeys) {
         auto entry = pubkey_map.find(id);
@@ -4757,9 +4757,10 @@ std::vector<OutputGroup> CWallet::GroupOutputs(const std::vector<COutput>& outpu
     return groups;
 }
 
-bool CWallet::GetKeyOrigin(const CKeyID& keyID, KeyOriginInfo& info) const
+bool CWallet::GetKeyOrigin(const CPubKey& pubkey, KeyOriginInfo& info) const
 {
     CKeyMetadata meta;
+    const CKeyID& keyID = pubkey.GetID();
     {
         LOCK(cs_wallet);
         GetKeyMetadata(keyID, meta);

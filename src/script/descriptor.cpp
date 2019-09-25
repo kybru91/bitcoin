@@ -458,7 +458,7 @@ public:
         pubkeys.reserve(entries.size());
         for (auto& entry : entries) {
             pubkeys.push_back(entry.first);
-            out.origins.emplace(entry.first.GetID(), std::make_pair<CPubKey, KeyOriginInfo>(CPubKey(entry.first), std::move(entry.second)));
+            out.origins.emplace(CPubKey(entry.first), std::move(entry.second));
         }
         if (m_subdescriptor_arg) {
             for (const auto& subscript : subscripts) {
@@ -927,7 +927,7 @@ std::unique_ptr<PubkeyProvider> InferPubkey(const CPubKey& pubkey, ParseScriptCo
 {
     std::unique_ptr<PubkeyProvider> key_provider = MakeUnique<ConstPubkeyProvider>(pubkey);
     KeyOriginInfo info;
-    if (provider.GetKeyOrigin(pubkey.GetID(), info)) {
+    if (provider.GetKeyOrigin(pubkey, info)) {
         return MakeUnique<OriginPubkeyProvider>(std::move(info), std::move(key_provider));
     }
     return key_provider;

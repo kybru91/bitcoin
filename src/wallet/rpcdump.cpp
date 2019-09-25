@@ -871,7 +871,7 @@ struct ImportData
     // Output data
     std::set<CScript> import_scripts;
     std::map<CKeyID, bool> used_keys; //!< Import these private keys if available (the value indicates whether if the key is required for solvability)
-    std::map<CKeyID, std::pair<CPubKey, KeyOriginInfo>> key_origins;
+    std::map<CPubKey, KeyOriginInfo> key_origins;
 };
 
 enum class ScriptContext
@@ -1167,8 +1167,8 @@ static UniValue ProcessImportDescriptor(ImportData& import_data, std::map<CKeyID
         [&](const std::pair<CKeyID, CPubKey>& used_key) {
             return privkey_map.count(used_key.first) > 0;
         }) && std::all_of(import_data.key_origins.begin(), import_data.key_origins.end(),
-        [&](const std::pair<CKeyID, std::pair<CPubKey, KeyOriginInfo>>& entry) {
-            return privkey_map.count(entry.first) > 0;
+        [&](const std::pair<CPubKey, KeyOriginInfo>& entry) {
+            return privkey_map.count(entry.first.GetID()) > 0;
         });
     if (!watch_only && !spendable) {
         warnings.push_back("Some private keys are missing, outputs will be considered watchonly. If this is intentional, specify the watchonly flag.");
