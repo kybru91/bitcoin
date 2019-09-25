@@ -196,8 +196,8 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rescan, TestChain100Setup)
     {
         std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(chain.get(), WalletLocation(), WalletDatabase::CreateDummy());
         LOCK(wallet->cs_wallet);
-        wallet->mapKeyMetadata[coinbaseKey.GetPubKey().GetID()].nCreateTime = KEY_TIME;
-        wallet->AddKeyPubKey(coinbaseKey, coinbaseKey.GetPubKey());
+        CKeyMetadata meta(KEY_TIME);
+        wallet->AddKeyPubKey(coinbaseKey, coinbaseKey.GetPubKey(), &meta);
 
         JSONRPCRequest request;
         request.params.setArray();

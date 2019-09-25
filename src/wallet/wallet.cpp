@@ -290,10 +290,9 @@ CPubKey CWallet::GenerateNewKey(WalletBatch &batch, bool internal)
     CPubKey pubkey = secret.GetPubKey();
     assert(secret.VerifyPubKey(pubkey));
 
-    mapKeyMetadata[pubkey.GetID()] = metadata;
     UpdateTimeFirstKey(nCreationTime);
 
-    if (!AddKeyPubKeyWithDB(batch, secret, pubkey)) {
+    if (!AddKeyPubKeyWithDB(batch, secret, pubkey, &metadata)) {
         throw std::runtime_error(std::string(__func__) + ": AddKey failed");
     }
     return pubkey;
@@ -354,7 +353,7 @@ void CWallet::DeriveNewChildKey(WalletBatch &batch, CKeyMetadata& metadata, CKey
         throw std::runtime_error(std::string(__func__) + ": Writing HD chain model failed");
 }
 
-bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const CPubKey& pubkey)
+bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const CPubKey& pubkey, CKeyMetadata* meta)
 {
     AssertLockHeld(cs_wallet);
 
@@ -385,8 +384,11 @@ bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const C
         RemoveWatchOnly(script);
     }
 
-    if (!batch.WriteKeyMetadata(mapKeyMetadata[pubkey.GetID()], pubkey, false)) {
-        throw std::runtime_error(std::string(__func__) + ": Writing key metadata failed");
+    if (meta) {
+        mapKeyMetadata[pubkey.GetID()] = *meta;
+        if (!batch.WriteKeyMetadata(*meta, pubkey, true)) {
+            throw std::runtime_error(std::string(__func__) + ": Writing key metadata failed");
+        }
     }
 
     if (!IsCrypted()) {
@@ -399,7 +401,13 @@ bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const C
 bool CWallet::AddKeyPubKey(const CKey& secret, const CPubKey &pubkey)
 {
     WalletBatch batch(*database);
-    return CWallet::AddKeyPubKeyWithDB(batch, secret, pubkey);
+    return CWallet::AddKeyPubKeyWithDB(batch, secret, pubkey, nullptr);
+}
+
+bool CWallet::AddKeyPubKey(const CKey& secret, const CPubKey &pubkey, CKeyMetadata* meta)
+{
+    WalletBatch batch(*database);
+    return CWallet::AddKeyPubKeyWithDB(batch, secret, pubkey, meta);
 }
 
 bool CWallet::AddCryptedKey(const CPubKey &vchPubKey,
@@ -1629,11 +1637,8 @@ CPubKey CWallet::DeriveNewSeed(const CKey& key)
     {
         LOCK(cs_wallet);
 
-        // mem store the metadata
-        mapKeyMetadata[seed.GetID()] = metadata;
-
         // write the key&metadata to the database
-        if (!AddKeyPubKey(key, seed))
+        if (!AddKeyPubKey(key, seed, &metadata))
             throw std::runtime_error(std::string(__func__) + ": AddKeyPubKey failed");
     }
 
@@ -1808,9 +1813,14 @@ bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const in
             WalletLogPrintf("Already have key with pubkey %s, skipping\n", HexStr(pubkey));
             continue;
         }
-        mapKeyMetadata[id].nCreateTime = timestamp;
+        CKeyMetadata meta(timestamp);
+        if (mapKeyMetadata.count(id) > 0) {
+            mapKeyMetadata[id].nCreateTime = timestamp;
+            meta = mapKeyMetadata[id];
+        }
+
         // If the private key is not present in the wallet, insert it.
-        if (!AddKeyPubKeyWithDB(batch, key, pubkey)) {
+        if (!AddKeyPubKeyWithDB(batch, key, pubkey, &meta)) {
             return false;
         }
         UpdateTimeFirstKey(timestamp);
