@@ -88,12 +88,8 @@ bool WalletBatch::WriteKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubk
     return WriteIC(std::make_pair(DBKeys::KEYMETA, pubkey), meta, overwrite);
 }
 
-bool WalletBatch::WriteKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey, const CKeyMetadata& keyMeta)
+bool WalletBatch::WriteKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey)
 {
-    if (!WriteKeyMetadata(keyMeta, vchPubKey, false)) {
-        return false;
-    }
-
     // hash pubkey/privkey to accelerate wallet load
     std::vector<unsigned char> vchKey;
     vchKey.reserve(vchPubKey.size() + vchPrivKey.size());
@@ -104,13 +100,8 @@ bool WalletBatch::WriteKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey,
 }
 
 bool WalletBatch::WriteCryptedKey(const CPubKey& vchPubKey,
-                                const std::vector<unsigned char>& vchCryptedSecret,
-                                const CKeyMetadata &keyMeta)
+                                const std::vector<unsigned char>& vchCryptedSecret)
 {
-    if (!WriteKeyMetadata(keyMeta, vchPubKey, true)) {
-        return false;
-    }
-
     if (!WriteIC(std::make_pair(DBKeys::CRYPTED_KEY, vchPubKey), vchCryptedSecret, false)) {
         return false;
     }

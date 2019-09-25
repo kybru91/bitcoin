@@ -385,10 +385,12 @@ bool CWallet::AddKeyPubKeyWithDB(WalletBatch& batch, const CKey& secret, const C
         RemoveWatchOnly(script);
     }
 
+    if (!batch.WriteKeyMetadata(mapKeyMetadata[pubkey.GetID()], pubkey, false)) {
+        throw std::runtime_error(std::string(__func__) + ": Writing key metadata failed");
+    }
+
     if (!IsCrypted()) {
-        return batch.WriteKey(pubkey,
-                                                 secret.GetPrivKey(),
-                                                 mapKeyMetadata[pubkey.GetID()]);
+        return batch.WriteKey(pubkey, secret.GetPrivKey());
     }
     UnsetWalletFlagWithDB(batch, WALLET_FLAG_BLANK_WALLET);
     return true;
@@ -409,12 +411,10 @@ bool CWallet::AddCryptedKey(const CPubKey &vchPubKey,
         LOCK(cs_wallet);
         if (encrypted_batch)
             return encrypted_batch->WriteCryptedKey(vchPubKey,
-                                                        vchCryptedSecret,
-                                                        mapKeyMetadata[vchPubKey.GetID()]);
+                                                        vchCryptedSecret);
         else
             return WalletBatch(*database).WriteCryptedKey(vchPubKey,
-                                                            vchCryptedSecret,
-                                                            mapKeyMetadata[vchPubKey.GetID()]);
+                                                            vchCryptedSecret);
     }
 }
 
