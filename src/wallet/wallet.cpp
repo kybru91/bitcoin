@@ -1813,10 +1813,8 @@ bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const in
             continue;
         }
         CKeyMetadata meta(timestamp);
-        if (mapKeyMetadata.count(id) > 0) {
-            mapKeyMetadata[id].nCreateTime = timestamp;
-            meta = mapKeyMetadata[id];
-        }
+        GetKeyMetadata(id, meta);
+        meta.nCreateTime = timestamp;
 
         // If the private key is not present in the wallet, insert it.
         if (!AddKeyPubKeyWithDB(batch, key, pubkey, &meta)) {
@@ -1848,7 +1846,11 @@ bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const st
         if (!AddWatchOnlyWithDB(batch, GetScriptForRawPubKey(pubkey), timestamp)) {
             return false;
         }
-        mapKeyMetadata[id].nCreateTime = timestamp;
+        CKeyMetadata meta(timestamp);
+        if (GetKeyMetadata(id, meta)) {
+            meta.nCreateTime = timestamp;
+        }
+        AddKeyMetadata(pubkey, meta, &batch);
 
         // Add to keypool only works with pubkeys
         if (add_keypool) {
