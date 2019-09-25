@@ -429,7 +429,6 @@ void CWallet::LoadKeyMetadata(const CKeyID& keyID, const CKeyMetadata& meta)
 {
     AssertLockHeld(cs_wallet);
     UpdateTimeFirstKey(meta.nCreateTime);
-    mapKeyMetadata[keyID] = meta;
     if (meta.nVersion >= CKeyMetadata::VERSION_WITH_KEY_ORIGIN) {
         m_keymeta_to_upgrade[keyID] = meta;
     }
@@ -439,7 +438,6 @@ void CWallet::LoadScriptMetadata(const CScriptID& script_id, const CKeyMetadata&
 {
     AssertLockHeld(cs_wallet);
     UpdateTimeFirstKey(meta.nCreateTime);
-    m_script_metadata[script_id] = meta;
 }
 
 void CWallet::UpgradeKeyMetadata()
@@ -1796,7 +1794,7 @@ bool CWallet::ImportScripts(const std::set<CScript> scripts, int64_t timestamp)
 
         if (timestamp > 0) {
             CKeyMetadata meta(timestamp);
-            if (GetScriptMetadata(id, meta)) {
+            if (GetScriptMetadata(entry, meta)) {
                 meta.nCreateTime = timestamp;
             }
             AddScriptMetadata(entry, meta, &batch);
@@ -1823,7 +1821,7 @@ bool CWallet::ImportPrivKeys(const std::map<CKeyID, CKey>& privkey_map, const in
             continue;
         }
         CKeyMetadata meta(timestamp);
-        GetKeyMetadata(id, meta);
+        GetKeyMetadata(pubkey, meta);
         meta.nCreateTime = timestamp;
 
         // If the private key is not present in the wallet, insert it.
@@ -1857,7 +1855,7 @@ bool CWallet::ImportPubKeys(const std::vector<CKeyID>& ordered_pubkeys, const st
             return false;
         }
         CKeyMetadata meta(timestamp);
-        if (GetKeyMetadata(id, meta)) {
+        if (GetKeyMetadata(pubkey, meta)) {
             meta.nCreateTime = timestamp;
         }
         AddKeyMetadata(pubkey, meta, &batch);
@@ -3559,15 +3557,6 @@ void CWallet::LoadKeyPool(int64_t nIndex, const CKeyPool &keypool)
     }
     m_max_keypool_index = std::max(m_max_keypool_index, nIndex);
     m_pool_key_to_index[keypool.vchPubKey.GetID()] = nIndex;
-
-    // If no metadata exists yet, create a default with the pool key's
-    // creation time. Note that this may be overwritten by actually
-    // stored metadata for that key later, which is fine.
-    CKeyID keyid = keypool.vchPubKey.GetID();
-    CKeyMetadata meta(keypool.nTime);
-    if (!GetKeyMetadata(keyid, meta)) {
-        AddKeyMetadata(keypool.vchPubKey, meta, nullptr, true);
-    }
 }
 
 bool CWallet::TopUpKeyPool(unsigned int kpSize)
@@ -4051,19 +4040,19 @@ void CWallet::GetKeyBirthTimes(interfaces::Chain::Lock& locked_chain, std::map<C
     // get birth times for all keys from their metadata
     for (const auto& entry : mapKeys) {
         CKeyMetadata meta;
-        if (GetKeyMetadata(entry.first, meta)) {
+        if (GetKeyMetadata(entry.second.GetPubKey(), meta)) {
             mapKeyBirth[entry.first] = meta.nCreateTime;
         }
     }
     for (const auto& entry : mapCryptedKeys) {
         CKeyMetadata meta;
-        if (GetKeyMetadata(entry.first, meta)) {
+        if (GetKeyMetadata(entry.second.first, meta)) {
             mapKeyBirth[entry.first] = meta.nCreateTime;
         }
     }
     for (const auto& entry : mapWatchKeys) {
         CKeyMetadata meta;
-        if (GetKeyMetadata(entry.first, meta)) {
+        if (GetKeyMetadata(entry.second, meta)) {
             mapKeyBirth[entry.first] = meta.nCreateTime;
         }
     }
@@ -4760,15 +4749,15 @@ std::vector<OutputGroup> CWallet::GroupOutputs(const std::vector<COutput>& outpu
 bool CWallet::GetKeyOrigin(const CPubKey& pubkey, KeyOriginInfo& info) const
 {
     CKeyMetadata meta;
-    const CKeyID& keyID = pubkey.GetID();
     {
         LOCK(cs_wallet);
-        GetKeyMetadata(keyID, meta);
+        GetKeyMetadata(pubkey, meta);
     }
     if (meta.has_key_origin) {
         std::copy(meta.key_origin.fingerprint, meta.key_origin.fingerprint + 4, info.fingerprint);
         info.path = meta.key_origin.path;
     } else { // Single pubkeys get the master fingerprint of themselves
+        const CKeyID& keyID = pubkey.GetID();
         std::copy(keyID.begin(), keyID.begin() + 4, info.fingerprint);
     }
     return true;
@@ -4778,7 +4767,7 @@ bool CWallet::AddKeyOriginWithDB(WalletBatch& batch, const CPubKey& pubkey, cons
 {
     LOCK(cs_wallet);
     CKeyMetadata meta;
-    GetKeyMetadata(pubkey.GetID(), meta);
+    GetKeyMetadata(pubkey, meta);
 
     std::copy(info.fingerprint, info.fingerprint + 4, meta.key_origin.fingerprint);
     meta.key_origin.path = info.path;
@@ -4988,48 +4977,34 @@ bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<uns
     return true;
 }
 
-bool CWallet::GetKeyMetadata(const CKeyID& id, CKeyMetadata& meta) const
+bool CWallet::GetKeyMetadata(const CPubKey& pubkey, CKeyMetadata& meta, WalletBatch* batch) const
 {
-    LOCK(cs_wallet);
-    if (mapKeyMetadata.count(id) > 0) {
-        meta = mapKeyMetadata.at(id);
-        return true;
+    if (batch) {
+        return batch->ReadKeyMetadata(pubkey, meta);
     }
-    return false;
+    return WalletBatch(*database).ReadKeyMetadata(pubkey, meta);
 }
 
-bool CWallet::AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch, bool mem_only)
+bool CWallet::AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch)
 {
-    mapKeyMetadata[pubkey.GetID()] = meta;
-    if (!mem_only) {
-        if (batch) {
-            return batch->WriteKeyMetadata(meta, pubkey, true);
-        }
-        return WalletBatch(*database).WriteKeyMetadata(meta, pubkey, true);
-    } else {
-        return true;
+    if (batch) {
+        return batch->WriteKeyMetadata(meta, pubkey, true);
     }
+    return WalletBatch(*database).WriteKeyMetadata(meta, pubkey, true);
 }
 
-bool CWallet::GetScriptMetadata(const CScriptID& id, CKeyMetadata& meta) const
+bool CWallet::GetScriptMetadata(const CScript& script, CKeyMetadata& meta, WalletBatch* batch) const
 {
-    LOCK(cs_wallet);
-    if (m_script_metadata.count(id) > 0) {
-        meta = m_script_metadata.at(id);
-        return true;
+    if (batch) {
+        return batch->ReadScriptMetadata(script, meta);
     }
-    return false;
+    return WalletBatch(*database).ReadScriptMetadata(script, meta);
 }
 
-bool CWallet::AddScriptMetadata(const CScript& script, const CKeyMetadata& meta, WalletBatch* batch, bool mem_only)
+bool CWallet::AddScriptMetadata(const CScript& script, const CKeyMetadata& meta, WalletBatch* batch)
 {
-    m_script_metadata[CScriptID(script)] = meta;
-    if (!mem_only) {
-        if (batch) {
-            return batch->WriteScriptMetadata(script, meta);
-        }
-        return WalletBatch(*database).WriteScriptMetadata(script, meta);
-    } else {
-        return true;
+    if (batch) {
+        return batch->WriteScriptMetadata(script, meta);
     }
+    return WalletBatch(*database).WriteScriptMetadata(script, meta);
 }

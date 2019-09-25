@@ -922,16 +922,16 @@ public:
     void MarkPreSplitKeys() EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
 
     //! Get an existing CKeyMetadata
-    bool GetKeyMetadata(const CKeyID& id, CKeyMetadata& meta) const;
+    bool GetKeyMetadata(const CPubKey& pubkey, CKeyMetadata& meta, WalletBatch* batch = nullptr) const;
 
     //! Add a CKeyMetadata
-    bool AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch = nullptr, bool mem_only = false);
+    bool AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch = nullptr);
 
     //! Get an existing CKeyMetadata for scripts
-    bool GetScriptMetadata(const CScriptID& id, CKeyMetadata& meta) const;
+    bool GetScriptMetadata(const CScript& script, CKeyMetadata& meta, WalletBatch* batch = nullptr) const;
 
     //! Add a script's CKeyMetadata
-    bool AddScriptMetadata(const CScript& script, const CKeyMetadata& meta, WalletBatch* batch = nullptr, bool mem_only = false);
+    bool AddScriptMetadata(const CScript& script, const CKeyMetadata& meta, WalletBatch* batch = nullptr);
 
     typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
     MasterKeyMap mapMasterKeys;

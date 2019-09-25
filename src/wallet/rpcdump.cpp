@@ -820,7 +820,7 @@ UniValue dumpwallet(const JSONRPCRequest& request)
         CKey key;
         if (pwallet->GetKey(keyid, key)) {
             CKeyMetadata meta;
-            bool got_meta = pwallet->GetKeyMetadata(keyid, meta);
+            bool got_meta = pwallet->GetKeyMetadata(key.GetPubKey(), meta);
             file << strprintf("%s %s ", EncodeSecret(key), strTime);
             if (GetWalletAddressesForKey(pwallet, keyid, strAddr, strLabel)) {
                file << strprintf("label=%s", strLabel);
@@ -841,13 +841,13 @@ UniValue dumpwallet(const JSONRPCRequest& request)
         CScript script;
         std::string create_time = "0";
         std::string address = EncodeDestination(ScriptHash(scriptid));
-        // get birth times for scripts with metadata
-        CKeyMetadata meta;
-        bool got_meta = pwallet->GetScriptMetadata(scriptid, meta);
-        if (got_meta) {
-            create_time = FormatISO8601DateTime(meta.nCreateTime);
-        }
         if(pwallet->GetCScript(scriptid, script)) {
+            // get birth times for scripts with metadata
+            CKeyMetadata meta;
+            bool got_meta = pwallet->GetScriptMetadata(script, meta);
+            if (got_meta) {
+                create_time = FormatISO8601DateTime(meta.nCreateTime);
+            }
             file << strprintf("%s %s script=1", HexStr(script.begin(), script.end()), create_time);
             file << strprintf(" # addr=%s\n", address);
         }

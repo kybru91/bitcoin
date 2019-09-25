@@ -3762,10 +3762,13 @@ UniValue getaddressinfo(const JSONRPCRequest& request)
     bool got_meta = false;
     CKeyID key_id = GetKeyForDestination(*pwallet, dest);
     if (!key_id.IsNull()) {
-        got_meta = pwallet->GetKeyMetadata(key_id, meta);
+        CPubKey pubkey;
+        if (pwallet->GetPubKey(key_id, pubkey)) {
+            got_meta = pwallet->GetKeyMetadata(pubkey, meta);
+        }
     }
     if (!got_meta) {
-        got_meta = pwallet->GetScriptMetadata(CScriptID(scriptPubKey), meta);
+        got_meta = pwallet->GetScriptMetadata(scriptPubKey, meta);
     }
     if (got_meta) {
         ret.pushKV("timestamp", meta.nCreateTime);
