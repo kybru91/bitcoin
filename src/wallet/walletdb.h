@@ -223,6 +223,7 @@ public:
     bool EraseTx(uint256 hash);
 
     bool WriteKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubkey, const bool overwrite);
+    bool ReadKeyMetadata(const CPubKey& pubkey, CKeyMetadata& meta);
     bool WriteKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey);
     bool WriteCryptedKey(const CPubKey& vchPubKey, const std::vector<unsigned char>& vchCryptedSecret);
     bool WriteMasterKey(unsigned int nID, const CMasterKey& kMasterKey);
@@ -230,6 +231,7 @@ public:
     bool WriteCScript(const uint160& hash, const CScript& redeemScript);
 
     bool WriteScriptMetadata(const CScript& script, const CKeyMetadata& meta);
+    bool ReadScriptMetadata(const CScript& script, CKeyMetadata& meta);
     bool WriteWatchOnly(const CScript &script);
     bool EraseWatchOnly(const CScript &script);
 

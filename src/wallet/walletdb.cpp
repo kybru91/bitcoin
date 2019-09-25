@@ -88,6 +88,11 @@ bool WalletBatch::WriteKeyMetadata(const CKeyMetadata& meta, const CPubKey& pubk
     return WriteIC(std::make_pair(DBKeys::KEYMETA, pubkey), meta, overwrite);
 }
 
+bool WalletBatch::ReadKeyMetadata(const CPubKey& pubkey, CKeyMetadata& meta)
+{
+    return m_batch.Read(std::make_pair(DBKeys::KEYMETA, pubkey), meta);
+}
+
 bool WalletBatch::WriteKey(const CPubKey& vchPubKey, const CPrivKey& vchPrivKey)
 {
     // hash pubkey/privkey to accelerate wallet load
@@ -127,6 +132,11 @@ bool WalletBatch::WriteWatchOnly(const CScript &dest)
 bool WalletBatch::WriteScriptMetadata(const CScript& script, const CKeyMetadata& meta)
 {
     return WriteIC(std::make_pair(DBKeys::WATCHMETA, script), meta);
+}
+
+bool WalletBatch::ReadScriptMetadata(const CScript& script, CKeyMetadata& meta)
+{
+    return m_batch.Read(std::make_pair(DBKeys::WATCHMETA, script), meta);
 }
 
 bool WalletBatch::EraseWatchOnly(const CScript &dest)
