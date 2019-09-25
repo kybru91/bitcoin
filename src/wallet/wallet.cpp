@@ -4959,3 +4959,36 @@ bool CWallet::AddCryptedKeyInner(const CPubKey &vchPubKey, const std::vector<uns
     ImplicitlyLearnRelatedKeyScripts(vchPubKey);
     return true;
 }
+
+bool CWallet::GetKeyMetadata(const CKeyID& id, CKeyMetadata& meta) const
+{
+    LOCK(cs_wallet);
+    if (mapKeyMetadata.count(id) > 0) {
+        meta = mapKeyMetadata.at(id);
+        return true;
+    }
+    return false;
+}
+
+bool CWallet::AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch, bool mem_only)
+{
+    mapKeyMetadata[pubkey.GetID()] = meta;
+    if (!mem_only) {
+        if (batch) {
+            return batch->WriteKeyMetadata(meta, pubkey, true);
+        }
+        return WalletBatch(*database).WriteKeyMetadata(meta, pubkey, true);
+    } else {
+        return true;
+    }
+}
+
+bool CWallet::GetScriptMetadata(const CScriptID& id, CKeyMetadata& meta) const
+{
+    LOCK(cs_wallet);
+    if (m_script_metadata.count(id) > 0) {
+        meta = m_script_metadata.at(id);
+        return true;
+    }
+    return false;
+}

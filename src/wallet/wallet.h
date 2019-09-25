@@ -917,8 +917,17 @@ public:
     // Map from Key ID to key metadata.
     std::map<CKeyID, CKeyMetadata> mapKeyMetadata GUARDED_BY(cs_wallet);
 
+    //! Get an existing CKeyMetadata
+    bool GetKeyMetadata(const CKeyID& id, CKeyMetadata& meta) const;
+
     // Map from Script ID to key metadata (for watch-only keys).
     std::map<CScriptID, CKeyMetadata> m_script_metadata GUARDED_BY(cs_wallet);
+
+    //! Add a CKeyMetadata
+    bool AddKeyMetadata(const CPubKey& pubkey, const CKeyMetadata& meta, WalletBatch* batch = nullptr, bool mem_only = false);
+
+    //! Get an existing CKeyMetadata for scripts
+    bool GetScriptMetadata(const CScriptID& id, CKeyMetadata& meta) const;
 
     typedef std::map<unsigned int, CMasterKey> MasterKeyMap;
     MasterKeyMap mapMasterKeys;
