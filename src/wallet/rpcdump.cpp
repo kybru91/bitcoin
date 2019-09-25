@@ -819,6 +819,8 @@ UniValue dumpwallet(const JSONRPCRequest& request)
         std::string strLabel;
         CKey key;
         if (pwallet->GetKey(keyid, key)) {
+            CKeyMetadata meta;
+            bool got_meta = pwallet->GetKeyMetadata(keyid, meta);
             file << strprintf("%s %s ", EncodeSecret(key), strTime);
             if (GetWalletAddressesForKey(pwallet, keyid, strAddr, strLabel)) {
                file << strprintf("label=%s", strLabel);
@@ -826,12 +828,12 @@ UniValue dumpwallet(const JSONRPCRequest& request)
                 file << "hdseed=1";
             } else if (mapKeyPool.count(keyid)) {
                 file << "reserve=1";
-            } else if (pwallet->mapKeyMetadata[keyid].hdKeypath == "s") {
+            } else if (got_meta && meta.hdKeypath == "s") {
                 file << "inactivehdseed=1";
             } else {
                 file << "change=1";
             }
-            file << strprintf(" # addr=%s%s\n", strAddr, (pwallet->mapKeyMetadata[keyid].has_key_origin ? " hdkeypath="+WriteHDKeypath(pwallet->mapKeyMetadata[keyid].key_origin.path) : ""));
+            file << strprintf(" # addr=%s%s\n", strAddr, (got_meta && meta.has_key_origin ? " hdkeypath="+WriteHDKeypath(meta.key_origin.path) : ""));
         }
     }
     file << "\n";
@@ -840,9 +842,10 @@ UniValue dumpwallet(const JSONRPCRequest& request)
         std::string create_time = "0";
         std::string address = EncodeDestination(ScriptHash(scriptid));
         // get birth times for scripts with metadata
-        auto it = pwallet->m_script_metadata.find(scriptid);
-        if (it != pwallet->m_script_metadata.end()) {
-            create_time = FormatISO8601DateTime(it->second.nCreateTime);
+        CKeyMetadata meta;
+        bool got_meta = pwallet->GetScriptMetadata(scriptid, meta);
+        if (got_meta) {
+            create_time = FormatISO8601DateTime(meta.nCreateTime);
         }
         if(pwallet->GetCScript(scriptid, script)) {
             file << strprintf("%s %s script=1", HexStr(script.begin(), script.end()), create_time);
