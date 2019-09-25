@@ -1791,7 +1791,11 @@ bool CWallet::ImportScripts(const std::set<CScript> scripts, int64_t timestamp)
         }
 
         if (timestamp > 0) {
-            m_script_metadata[CScriptID(entry)].nCreateTime = timestamp;
+            CKeyMetadata meta(timestamp);
+            if (GetScriptMetadata(id, meta)) {
+                meta.nCreateTime = timestamp;
+            }
+            AddScriptMetadata(entry, meta, &batch);
         }
     }
     if (timestamp > 0) {
