@@ -3758,26 +3758,21 @@ UniValue getaddressinfo(const JSONRPCRequest& request)
         ret.pushKV("label", pwallet->mapAddressBook[dest].name);
     }
     ret.pushKV("ischange", pwallet->IsChange(scriptPubKey));
-    const CKeyMetadata* meta = nullptr;
+    CKeyMetadata meta;
+    bool got_meta = false;
     CKeyID key_id = GetKeyForDestination(*pwallet, dest);
     if (!key_id.IsNull()) {
-        auto it = pwallet->mapKeyMetadata.find(key_id);
-        if (it != pwallet->mapKeyMetadata.end()) {
-            meta = &it->second;
-        }
+        got_meta = pwallet->GetKeyMetadata(key_id, meta);
     }
-    if (!meta) {
-        auto it = pwallet->m_script_metadata.find(CScriptID(scriptPubKey));
-        if (it != pwallet->m_script_metadata.end()) {
-            meta = &it->second;
-        }
+    if (!got_meta) {
+        got_meta = pwallet->GetScriptMetadata(CScriptID(scriptPubKey), meta);
     }
-    if (meta) {
-        ret.pushKV("timestamp", meta->nCreateTime);
-        if (meta->has_key_origin) {
-            ret.pushKV("hdkeypath", WriteHDKeypath(meta->key_origin.path));
-            ret.pushKV("hdseedid", meta->hd_seed_id.GetHex());
-            ret.pushKV("hdmasterfingerprint", HexStr(meta->key_origin.fingerprint, meta->key_origin.fingerprint + 4));
+    if (got_meta) {
+        ret.pushKV("timestamp", meta.nCreateTime);
+        if (meta.has_key_origin) {
+            ret.pushKV("hdkeypath", WriteHDKeypath(meta.key_origin.path));
+            ret.pushKV("hdseedid", meta.hd_seed_id.GetHex());
+            ret.pushKV("hdmasterfingerprint", HexStr(meta.key_origin.fingerprint, meta.key_origin.fingerprint + 4));
         }
     }
 
