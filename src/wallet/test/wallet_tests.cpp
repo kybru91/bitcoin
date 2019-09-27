@@ -398,7 +398,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoins, ListCoinsTestingSetup)
 {
     std::string coinbaseAddress = coinbaseKey.GetPubKey().GetID().ToString();
 
-    // Confirm ListCoins initially returns 1 coin grouped under coinbaseKey
+    // Confirm ListCoins initially returns 2 coin grouped under coinbaseKey
     // address.
     std::map<CTxDestination, std::vector<COutput>> list;
     {
@@ -406,12 +406,12 @@ BOOST_FIXTURE_TEST_CASE(ListCoins, ListCoinsTestingSetup)
         LOCK(wallet->cs_wallet);
         list = wallet->ListCoins(*locked_chain);
     }
-    BOOST_CHECK_EQUAL(list.size(), 1U);
+    BOOST_CHECK_EQUAL(list.size(), 2U);
     BOOST_CHECK_EQUAL(boost::get<PKHash>(list.begin()->first).ToString(), coinbaseAddress);
-    BOOST_CHECK_EQUAL(list.begin()->second.size(), 1U);
+    BOOST_CHECK_EQUAL(list.begin()->second.size(), 2U);
 
     // Check initial balance from one mature coinbase transaction.
-    BOOST_CHECK_EQUAL(50 * COIN, wallet->GetAvailableBalance());
+    BOOST_CHECK_EQUAL(100 * COIN, wallet->GetAvailableBalance());
 
     // Add a transaction creating a change address, and confirm ListCoins still
     // returns the coin associated with the change address underneath the
@@ -425,7 +425,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoins, ListCoinsTestingSetup)
     }
     BOOST_CHECK_EQUAL(list.size(), 1U);
     BOOST_CHECK_EQUAL(boost::get<PKHash>(list.begin()->first).ToString(), coinbaseAddress);
-    BOOST_CHECK_EQUAL(list.begin()->second.size(), 2U);
+    BOOST_CHECK_EQUAL(list.begin()->second.size(), 3U);
 
     // Lock both coins. Confirm number of available coins drops to 0.
     {
@@ -433,7 +433,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoins, ListCoinsTestingSetup)
         LOCK(wallet->cs_wallet);
         std::vector<COutput> available;
         wallet->AvailableCoins(*locked_chain, available);
-        BOOST_CHECK_EQUAL(available.size(), 2U);
+        BOOST_CHECK_EQUAL(available.size(), 3U);
     }
     for (const auto& group : list) {
         for (const auto& coin : group.second) {
@@ -457,7 +457,7 @@ BOOST_FIXTURE_TEST_CASE(ListCoins, ListCoinsTestingSetup)
     }
     BOOST_CHECK_EQUAL(list.size(), 1U);
     BOOST_CHECK_EQUAL(boost::get<PKHash>(list.begin()->first).ToString(), coinbaseAddress);
-    BOOST_CHECK_EQUAL(list.begin()->second.size(), 2U);
+    BOOST_CHECK_EQUAL(list.begin()->second.size(), 3U);
 }
 
 BOOST_FIXTURE_TEST_CASE(wallet_disableprivkeys, TestChain100Setup)
