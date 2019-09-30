@@ -194,8 +194,10 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rescan, TestChain100Setup)
 
     // Import key into wallet and call dumpwallet to create backup file.
     {
-        std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(chain.get(), WalletLocation(), WalletDatabase::CreateDummy());
+        std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(chain.get(), WalletLocation(), WalletDatabase::CreateMock());
         LOCK(wallet->cs_wallet);
+        bool first_run;
+        wallet->LoadWallet(first_run);
         CKeyMetadata meta(KEY_TIME);
         wallet->AddKeyPubKey(coinbaseKey, coinbaseKey.GetPubKey(), &meta);
 
@@ -210,7 +212,9 @@ BOOST_FIXTURE_TEST_CASE(importwallet_rescan, TestChain100Setup)
     // Call importwallet RPC and verify all blocks with timestamps >= BLOCK_TIME
     // were scanned, and no prior blocks were scanned.
     {
-        std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(chain.get(), WalletLocation(), WalletDatabase::CreateDummy());
+        std::shared_ptr<CWallet> wallet = std::make_shared<CWallet>(chain.get(), WalletLocation(), WalletDatabase::CreateMock());
+        bool first_run;
+        wallet->LoadWallet(first_run);
 
         JSONRPCRequest request;
         request.params.setArray();
