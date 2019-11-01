@@ -57,7 +57,8 @@ static void CoinSelection(benchmark::Bench& bench)
     bench.run([&] {
         std::set<CInputCoin> setCoinsRet;
         CAmount nValueRet;
-        bool success = AttemptSelection(wallet, 1003 * COIN, filter_standard, coins, setCoinsRet, nValueRet, coin_selection_params);
+        CSAlgo a;
+        bool success = AttemptSelection(wallet, 1003 * COIN, filter_standard, coins, setCoinsRet, nValueRet, coin_selection_params, a);
         assert(success);
         assert(nValueRet == 1003 * COIN);
         assert(setCoinsRet.size() == 2);

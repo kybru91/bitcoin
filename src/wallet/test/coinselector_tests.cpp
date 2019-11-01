@@ -317,7 +317,8 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
         coin_control.fAllowOtherInputs = true;
         coin_control.Select(COutPoint(vCoins.at(0).tx->GetHash(), vCoins.at(0).i));
         coin_selection_params_bnb.m_effective_feerate = CFeeRate(0);
-        BOOST_CHECK(SelectCoins(*wallet, vCoins, 10 * CENT, setCoinsRet, nValueRet, coin_control, coin_selection_params_bnb));
+        CSAlgo a;
+        BOOST_CHECK(SelectCoins(*wallet, vCoins, 10 * CENT, setCoinsRet, nValueRet, coin_control, coin_selection_params_bnb, a));
     }
 }
 
@@ -658,7 +659,8 @@ BOOST_AUTO_TEST_CASE(SelectCoins_test)
         CoinSet out_set;
         CAmount out_value = 0;
         CCoinControl cc;
-        BOOST_CHECK(SelectCoins(testWallet, vCoins, target, out_set, out_value, cc, cs_params));
+        CSAlgo a;
+        BOOST_CHECK(SelectCoins(testWallet, vCoins, target, out_set, out_value, cc, cs_params, a));
         BOOST_CHECK_GE(out_value, target);
     }
 }

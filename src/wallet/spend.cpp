@@ -358,14 +358,14 @@ std::vector<OutputGroup> GroupOutputs(const CWallet& wallet, const std::vector<C
 }
 
 bool AttemptSelection(const CWallet& wallet, const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins,
-                                 std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params)
+                                 std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CoinSelectionParams& coin_selection_params, CSAlgo& algo_used)
 {
     setCoinsRet.clear();
     nValueRet = 0;
     // Vector of results for use with waste calculation
     // In order: calculated waste, selected inputs, selected input value (sum of input values)
     // TODO: Use a struct representing the selection result
-    std::vector<std::tuple<CAmount, std::set<CInputCoin>, CAmount>> results;
+    std::vector<std::tuple<CAmount, std::set<CInputCoin>, CAmount, CSAlgo>> results;
 
     // Note that unlike KnapsackSolver, we do not include the fee for creating a change output as BnB will not create a change output.
     std::vector<OutputGroup> positive_groups = GroupOutputs(wallet, coins, coin_selection_params, eligibility_filter, true /* positive_only */);
@@ -373,7 +373,7 @@ bool AttemptSelection(const CWallet& wallet, const CAmount& nTargetValue, const 
     CAmount bnb_value;
     if (SelectCoinsBnB(positive_groups, nTargetValue, coin_selection_params.m_cost_of_change, bnb_coins, bnb_value)) {
         const auto waste = GetSelectionWaste(bnb_coins, /* cost of change */ CAmount(0), nTargetValue, !coin_selection_params.m_subtract_fee_outputs);
-        results.emplace_back(std::make_tuple(waste, std::move(bnb_coins), bnb_value));
+        results.emplace_back(std::make_tuple(waste, std::move(bnb_coins), bnb_value, CSAlgo::BNB));
     }
 
     // The knapsack solver has some legacy behavior where it will spend dust outputs. We retain this behavior, so don't filter for positive only here.
@@ -384,7 +384,7 @@ bool AttemptSelection(const CWallet& wallet, const CAmount& nTargetValue, const 
     CAmount knapsack_value;
     if (KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_coins, knapsack_value)) {
         const auto waste = GetSelectionWaste(knapsack_coins, coin_selection_params.m_cost_of_change, nTargetValue + coin_selection_params.m_change_fee, !coin_selection_params.m_subtract_fee_outputs);
-        results.emplace_back(std::make_tuple(waste, std::move(knapsack_coins), knapsack_value));
+        results.emplace_back(std::make_tuple(waste, std::move(knapsack_coins), knapsack_value, CSAlgo::KNAPSACK));
     }
 
     // We include the minimum final change for SRD as we do want to avoid making really small change.
@@ -408,10 +408,11 @@ bool AttemptSelection(const CWallet& wallet, const CAmount& nTargetValue, const 
     });
     setCoinsRet = std::get<1>(*best_result);
     nValueRet = std::get<2>(*best_result);
+    algo_used = std::get<3>(*best_result);
     return true;
 }
 
-bool SelectCoins(const CWallet& wallet, const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params)
+bool SelectCoins(const CWallet& wallet, const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params, CSAlgo& algo_used)
 {
     std::vector<COutput> vCoins(vAvailableCoins);
     CAmount value_to_select = nTargetValue;
@@ -497,26 +498,26 @@ bool SelectCoins(const CWallet& wallet, const std::vector<COutput>& vAvailableCo
 
         // If possible, fund the transaction with confirmed UTXOs only. Prefer at least six
         // confirmations on outputs received from other wallets and only spend confirmed change.
-        if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(1, 6, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params)) return true;
-        if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(1, 1, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params)) return true;
+        if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(1, 6, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) return true;
+        if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(1, 1, 0), vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) return true;
 
         // Fall back to using zero confirmation change (but with as few ancestors in the mempool as
         // possible) if we cannot fund the transaction otherwise.
         if (wallet.m_spend_zero_conf_change) {
-            if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(0, 1, 2), vCoins, setCoinsRet, nValueRet, coin_selection_params)) return true;
+            if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(0, 1, 2), vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) return true;
             if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)),
-                                   vCoins, setCoinsRet, nValueRet, coin_selection_params)) {
+                                   vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) {
                 return true;
             }
             if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2),
-                                   vCoins, setCoinsRet, nValueRet, coin_selection_params)) {
+                                   vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) {
                 return true;
             }
             // If partial groups are allowed, relax the requirement of spending OutputGroups (groups
             // of UTXOs sent to the same address, which are obviously controlled by a single wallet)
             // in their entirety.
             if (AttemptSelection(wallet, value_to_select, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1, true /* include_partial_groups */),
-                                   vCoins, setCoinsRet, nValueRet, coin_selection_params)) {
+                                   vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) {
                 return true;
             }
             // Try with unsafe inputs if they are allowed. This may spend unconfirmed outputs
@@ -524,7 +525,7 @@ bool SelectCoins(const CWallet& wallet, const std::vector<COutput>& vAvailableCo
             if (coin_control.m_include_unsafe_inputs
                 && AttemptSelection(wallet, value_to_select,
                     CoinEligibilityFilter(0 /* conf_mine */, 0 /* conf_theirs */, max_ancestors-1, max_descendants-1, true /* include_partial_groups */),
-                    vCoins, setCoinsRet, nValueRet, coin_selection_params)) {
+                    vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) {
                 return true;
             }
             // Try with unlimited ancestors/descendants. The transaction will still need to meet
@@ -532,7 +533,7 @@ bool SelectCoins(const CWallet& wallet, const std::vector<COutput>& vAvailableCo
             // OutputGroups use heuristics that may overestimate ancestor/descendant counts.
             if (!fRejectLongChains && AttemptSelection(wallet, value_to_select,
                                       CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max(), true /* include_partial_groups */),
-                                      vCoins, setCoinsRet, nValueRet, coin_selection_params)) {
+                                      vCoins, setCoinsRet, nValueRet, coin_selection_params, algo_used)) {
                 return true;
             }
         }
@@ -618,7 +619,8 @@ static bool CreateTransactionInternal(
         bilingual_str& error,
         const CCoinControl& coin_control,
         FeeCalculation& fee_calc_out,
-        bool sign) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+        bool sign,
+        CSAlgo& algo_used) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
 
@@ -744,7 +746,7 @@ static bool CreateTransactionInternal(
     // Choose coins to use
     CAmount inputs_sum = 0;
     std::set<CInputCoin> setCoins;
-    if (!SelectCoins(wallet, vAvailableCoins, /* nTargetValue */ selection_target, setCoins, inputs_sum, coin_control, coin_selection_params))
+    if (!SelectCoins(wallet, vAvailableCoins, /* nTargetValue */ selection_target, setCoins, inputs_sum, coin_control, coin_selection_params, algo_used))
     {
         error = _("Insufficient funds");
         return false;
@@ -939,7 +941,8 @@ bool CreateTransaction(
 
     int nChangePosIn = nChangePosInOut;
     Assert(!tx); // tx is an out-param. TODO change the return type from bool to tx (or nullptr)
-    bool res = CreateTransactionInternal(wallet, vecSend, tx, nFeeRet, nChangePosInOut, error, coin_control, fee_calc_out, sign);
+    CSAlgo algo_used = CSAlgo::INVALID;
+    bool res = CreateTransactionInternal(wallet, vecSend, tx, nFeeRet, nChangePosInOut, error, coin_control, fee_calc_out, sign, algo_used);
     // try with avoidpartialspends unless it's enabled already
     if (res && nFeeRet > 0 /* 0 means non-functional fee rate estimation */ && wallet.m_max_aps_fee > -1 && !coin_control.m_avoid_partial_spends) {
         CCoinControl tmp_cc = coin_control;
@@ -948,7 +951,8 @@ bool CreateTransaction(
         CTransactionRef tx2;
         int nChangePosInOut2 = nChangePosIn;
         bilingual_str error2; // fired and forgotten; if an error occurs, we discard the results
-        if (CreateTransactionInternal(wallet, vecSend, tx2, nFeeRet2, nChangePosInOut2, error2, tmp_cc, fee_calc_out, sign)) {
+        CSAlgo algo_used2 = CSAlgo::INVALID;
+        if (CreateTransactionInternal(wallet, vecSend, tx2, nFeeRet2, nChangePosInOut2, error2, tmp_cc, fee_calc_out, sign, algo_used2)) {
             // if fee of this alternative one is within the range of the max fee, we use this one
             const bool use_aps = nFeeRet2 <= nFeeRet + wallet.m_max_aps_fee;
             wallet.WalletLogPrintf("Fee non-grouped = %lld, grouped = %lld, using %s\n", nFeeRet, nFeeRet2, use_aps ? "grouped" : "non-grouped");
@@ -956,8 +960,22 @@ bool CreateTransaction(
                 tx = tx2;
                 nFeeRet = nFeeRet2;
                 nChangePosInOut = nChangePosInOut2;
+                algo_used = algo_used2;
             }
         }
+    }
+    switch (algo_used){
+    case CSAlgo::BNB:
+        wallet.csinfo.bnb_use++;
+        break;
+    case CSAlgo::SRD:
+        wallet.csinfo.srd_use++;
+        break;
+    case CSAlgo::KNAPSACK:
+        wallet.csinfo.knapsack_use++;
+        break;
+    case CSAlgo::INVALID:
+        assert(false);
     }
     return res;
 }
