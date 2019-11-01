@@ -587,6 +587,39 @@ static RPCHelpMan upgradewallet()
     };
 }
 
+static RPCHelpMan coinselectioninfo()
+{
+    return RPCHelpMan{"coinselectioninfo",
+        "Returns coin selection stats.",
+        {},
+        RPCResult{
+            RPCResult::Type::OBJ,"","",
+            {
+                {RPCResult::Type::NUM, "bnb_usage", "Number of txs that used BnB solution"},
+                {RPCResult::Type::NUM, "srd_usage", "Number of txs that used SRD solution"},
+                {RPCResult::Type::NUM, "knapsack_usage", "Number of txs that used knapsack solution"},
+            }
+        },
+        RPCExamples{""},
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+            if (!wallet) return NullUniValue;
+            CWallet* const pwallet = wallet.get();
+
+            LOCK(pwallet->cs_wallet);
+
+            UniValue res(UniValue::VOBJ);
+
+            res.pushKV("bnb_usage", wallet->csinfo.bnb_use);
+            res.pushKV("srd_usage", wallet->csinfo.srd_use);
+            res.pushKV("knapsack_usage", wallet->csinfo.knapsack_use);
+
+            return res;
+        }
+    };
+}
+
 // addresses
 RPCHelpMan getaddressinfo();
 RPCHelpMan getnewaddress();
@@ -732,6 +765,7 @@ static const CRPCCommand commands[] =
     { "wallet",             &walletpassphrase,               },
     { "wallet",             &walletpassphrasechange,         },
     { "wallet",             &walletprocesspsbt,              },
+    { "wallet",             &coinselectioninfo,              },
 };
 // clang-format on
     return commands;

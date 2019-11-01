@@ -200,6 +200,14 @@ struct OutputGroup
  */
 [[nodiscard]] CAmount GetSelectionWaste(const std::set<CInputCoin>& inputs, CAmount change_cost, CAmount target, bool use_effective_value = true);
 
+enum class CSAlgo : uint8_t
+{
+    INVALID,
+    BNB,
+    SRD,
+    KNAPSACK,
+};
+
 struct SelectionResult
 {
 private:
@@ -235,6 +243,8 @@ public:
     std::vector<CInputCoin> GetShuffledInputVector() const;
 
     bool operator<(SelectionResult other) const;
+
+    CSAlgo algo{CSAlgo::INVALID};
 };
 
 std::optional<SelectionResult> SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change);

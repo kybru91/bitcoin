@@ -65,6 +65,7 @@ static const size_t TOTAL_TRIES = 100000;
 std::optional<SelectionResult> SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change)
 {
     SelectionResult result(selection_target);
+    result.algo = CSAlgo::BNB;
     CAmount curr_value = 0;
 
     std::vector<bool> curr_selection; // select the utxo at this index
@@ -172,6 +173,7 @@ std::optional<SelectionResult> SelectCoinsBnB(std::vector<OutputGroup>& utxo_poo
 std::optional<SelectionResult> SelectCoinsSRD(const std::vector<OutputGroup>& utxo_pool, CAmount target_value)
 {
     SelectionResult result(target_value);
+    result.algo = CSAlgo::SRD;
 
     std::vector<size_t> indexes;
     indexes.resize(utxo_pool.size());
@@ -240,6 +242,7 @@ static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const 
 std::optional<SelectionResult> KnapsackSolver(std::vector<OutputGroup>& groups, const CAmount& nTargetValue)
 {
     SelectionResult result(nTargetValue);
+    result.algo = CSAlgo::KNAPSACK;
 
     // List of values less than target
     std::optional<OutputGroup> lowest_larger;

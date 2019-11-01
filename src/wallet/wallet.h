@@ -141,6 +141,13 @@ static const std::map<std::string,WalletFlags> WALLET_FLAG_MAP{
     {"external_signer", WALLET_FLAG_EXTERNAL_SIGNER}
 };
 
+struct CoinSelectionInfo
+{
+    int bnb_use = 0;
+    int knapsack_use = 0;
+    int srd_use = 0;
+};
+
 extern const std::map<uint64_t,std::string> WALLET_FLAG_CAVEATS;
 
 /** A wrapper to reserve an address from a wallet
@@ -379,6 +386,8 @@ public:
         // Should not have slots connected at this point.
         assert(NotifyUnload.empty());
     }
+
+    CoinSelectionInfo csinfo;
 
     bool IsCrypted() const;
     bool IsLocked() const override;

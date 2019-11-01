@@ -649,7 +649,8 @@ static bool CreateTransactionInternal(
         bilingual_str& error,
         const CCoinControl& coin_control,
         FeeCalculation& fee_calc_out,
-        bool sign) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
+        bool sign,
+        CSAlgo& algo_used) EXCLUSIVE_LOCKS_REQUIRED(wallet.cs_wallet)
 {
     AssertLockHeld(wallet.cs_wallet);
 
@@ -775,6 +776,7 @@ static bool CreateTransactionInternal(
         error = _("Insufficient funds");
         return false;
     }
+    algo_used = result->algo;
 
     // Always make a change output
     // We will reduce the fee from this change output later, and remove the output if it is too small.
@@ -965,7 +967,8 @@ bool CreateTransaction(
 
     int nChangePosIn = nChangePosInOut;
     Assert(!tx); // tx is an out-param. TODO change the return type from bool to tx (or nullptr)
-    bool res = CreateTransactionInternal(wallet, vecSend, tx, nFeeRet, nChangePosInOut, error, coin_control, fee_calc_out, sign);
+    CSAlgo algo_used = CSAlgo::INVALID;
+    bool res = CreateTransactionInternal(wallet, vecSend, tx, nFeeRet, nChangePosInOut, error, coin_control, fee_calc_out, sign, algo_used);
     // try with avoidpartialspends unless it's enabled already
     if (res && nFeeRet > 0 /* 0 means non-functional fee rate estimation */ && wallet.m_max_aps_fee > -1 && !coin_control.m_avoid_partial_spends) {
         CCoinControl tmp_cc = coin_control;
@@ -974,7 +977,8 @@ bool CreateTransaction(
         CTransactionRef tx2;
         int nChangePosInOut2 = nChangePosIn;
         bilingual_str error2; // fired and forgotten; if an error occurs, we discard the results
-        if (CreateTransactionInternal(wallet, vecSend, tx2, nFeeRet2, nChangePosInOut2, error2, tmp_cc, fee_calc_out, sign)) {
+        CSAlgo algo_used2 = CSAlgo::INVALID;
+        if (CreateTransactionInternal(wallet, vecSend, tx2, nFeeRet2, nChangePosInOut2, error2, tmp_cc, fee_calc_out, sign, algo_used2)) {
             // if fee of this alternative one is within the range of the max fee, we use this one
             const bool use_aps = nFeeRet2 <= nFeeRet + wallet.m_max_aps_fee;
             wallet.WalletLogPrintf("Fee non-grouped = %lld, grouped = %lld, using %s\n", nFeeRet, nFeeRet2, use_aps ? "grouped" : "non-grouped");
@@ -982,7 +986,23 @@ bool CreateTransaction(
                 tx = tx2;
                 nFeeRet = nFeeRet2;
                 nChangePosInOut = nChangePosInOut2;
+                algo_used = algo_used2;
             }
+        }
+    }
+    if (res) {
+        switch (algo_used){
+        case CSAlgo::BNB:
+            wallet.csinfo.bnb_use++;
+            break;
+        case CSAlgo::SRD:
+            wallet.csinfo.srd_use++;
+            break;
+        case CSAlgo::KNAPSACK:
+            wallet.csinfo.knapsack_use++;
+            break;
+        case CSAlgo::INVALID:
+            assert(false);
         }
     }
     return res;
