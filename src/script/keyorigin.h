@@ -18,6 +18,18 @@ struct KeyOriginInfo
         return std::equal(std::begin(a.fingerprint), std::end(a.fingerprint), std::begin(b.fingerprint)) && a.path == b.path;
     }
 
+    friend bool operator<(const KeyOriginInfo& a, const KeyOriginInfo& b)
+    {
+        for (int i = 0; i < 4; ++i) {
+            if (a.fingerprint[i] < b.fingerprint[i]) return true;
+        }
+        if (a.path.size() < b.path.size()) return true;
+        for (unsigned int i = 0; i < a.path.size(); ++i) {
+            if (a.path.at(i) < b.path.at(i)) return true;
+        }
+        return false;
+    }
+
     ADD_SERIALIZE_METHODS;
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action)

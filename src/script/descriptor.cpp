@@ -1051,30 +1051,6 @@ std::unique_ptr<Descriptor> InferDescriptor(const CScript& script, const Signing
     return InferScript(script, ParseScriptContext::TOP, provider);
 }
 
-bool DescriptorCache::CachePubKey(unsigned int global_pos, const CPubKey& pubkey)
-{
-    if (global_pos < m_pos_begin) return false;
-    global_pos -= m_pos_begin;
-    if (m_pubkey_cache.size() <= global_pos) {
-        m_pubkey_cache.resize(global_pos + 1);
-    }
-    std::vector<CPubKey>& local_cache = m_pubkey_cache[global_pos];
-    local_cache.push_back(pubkey);
-    return true;
-}
-
-bool DescriptorCache::GetCachedPubKey(unsigned int global_pos, unsigned int internal_pos, CPubKey& pubkey) const
-{
-    if (global_pos < m_pos_begin) return false;
-    global_pos -= m_pos_begin;
-    if (m_pubkey_cache.size() <= global_pos) return false;
-    const std::vector<CPubKey>& local_cache = m_pubkey_cache.at(global_pos);
-    if (local_cache.size() <= internal_pos) return false;
-    pubkey = local_cache.at(internal_pos);
-    if (!pubkey.IsValid()) return false;
-    return true;
-}
-
 bool DescriptorCache::CacheExtPubKey(const KeyOriginInfo& origin_info, const CExtPubKey& xpub)
 {
     m_xpubs[origin_info] = xpub;
@@ -1087,11 +1063,6 @@ bool DescriptorCache::GetCachedExtPubKey(const KeyOriginInfo& origin_info, CExtP
     if (it == m_xpubs.end()) return false;
     xpub = it->second;
     return true;
-}
-
-void DescriptorCache::ClearPubKeyCache()
-{
-    m_pubkeys.clear();
 }
 
 void DescriptorCache::ClearExtPubKeyCache()
