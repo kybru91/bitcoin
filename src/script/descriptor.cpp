@@ -262,6 +262,16 @@ class BIP32PubkeyProvider final : public PubkeyProvider
         return true;
     }
 
+    // Derives the last xpub
+    bool GetDerivedExtKey(const SigningProvider& arg, CExtKey& xprv) const
+    {
+        if (!GetExtKey(arg, xprv)) return false;
+        for (auto entry : m_path) {
+            xprv.Derive(xprv, entry);
+        }
+        return true;
+    }
+
     bool IsHardened() const
     {
         if (m_derive == DeriveType::HARDENED) return true;
@@ -277,27 +287,34 @@ public:
     size_t GetSize() const override { return 33; }
     bool GetPubKey(int pos, const SigningProvider& arg, CPubKey* key, KeyOriginInfo& info, const DescriptorCache* read_cache = nullptr, DescriptorCache* write_cache = nullptr) const override
     {
+        KeyOriginInfo info_out;
+        CKeyID keyid = m_extkey.pubkey.GetID();
+        std::copy(keyid.begin(), keyid.begin() + sizeof(info_out.fingerprint), info_out.fingerprint);
+        info_out.path = m_path;
+        if (m_derive == DeriveType::UNHARDENED) info_out.path.push_back((uint32_t)pos);
+        if (m_derive == DeriveType::HARDENED) info_out.path.push_back(((uint32_t)pos) | 0x80000000L);
         if (key) {
+            CExtPubKey extkey = m_extkey;
             if (IsHardened()) {
-                CKey priv_key;
-                if (!GetPrivKey(pos, arg, priv_key)) return false;
-                *key = priv_key.GetPubKey();
+                CExtKey xprv;
+                if (!GetDerivedExtKey(arg, xprv)) return false;
+                if (m_derive == DeriveType::UNHARDENED) xprv.Derive(xprv, pos);
+                if (m_derive == DeriveType::HARDENED) xprv.Derive(xprv, pos | 0x80000000UL);
+                extkey = xprv.Neuter();
             } else {
                 // TODO: optimize by caching
-                CExtPubKey extkey = m_extkey;
                 for (auto entry : m_path) {
                     extkey.Derive(extkey, entry);
                 }
                 if (m_derive == DeriveType::UNHARDENED) extkey.Derive(extkey, pos);
                 assert(m_derive != DeriveType::HARDENED);
-                *key = extkey.pubkey;
+            }
+            *key = extkey.pubkey;
+            if (write_cache) {
+                if (!write_cache->CacheExtPubKey(info_out, extkey)) return false;
             }
         }
-        CKeyID keyid = m_extkey.pubkey.GetID();
-        std::copy(keyid.begin(), keyid.begin() + sizeof(info.fingerprint), info.fingerprint);
-        info.path = m_path;
-        if (m_derive == DeriveType::UNHARDENED) info.path.push_back((uint32_t)pos);
-        if (m_derive == DeriveType::HARDENED) info.path.push_back(((uint32_t)pos) | 0x80000000L);
+        info = info_out;
         return true;
     }
     std::string ToString() const override
@@ -323,10 +340,7 @@ public:
     bool GetPrivKey(int pos, const SigningProvider& arg, CKey& key) const override
     {
         CExtKey extkey;
-        if (!GetExtKey(arg, extkey)) return false;
-        for (auto entry : m_path) {
-            extkey.Derive(extkey, entry);
-        }
+        if (!GetDerivedExtKey(arg, extkey)) return false;
         if (m_derive == DeriveType::UNHARDENED) extkey.Derive(extkey, pos);
         if (m_derive == DeriveType::HARDENED) extkey.Derive(extkey, pos | 0x80000000UL);
         key = extkey.key;
