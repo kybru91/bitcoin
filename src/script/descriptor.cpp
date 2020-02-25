@@ -295,14 +295,15 @@ public:
         if (m_derive == DeriveType::HARDENED) info_out.path.push_back(((uint32_t)pos) | 0x80000000L);
         if (key) {
             CExtPubKey extkey = m_extkey;
-            if (IsHardened()) {
+            if (read_cache) {
+                if (!read_cache->GetCachedExtPubKey(info_out, extkey)) return false;
+            } else if (IsHardened()) {
                 CExtKey xprv;
                 if (!GetDerivedExtKey(arg, xprv)) return false;
                 if (m_derive == DeriveType::UNHARDENED) xprv.Derive(xprv, pos);
                 if (m_derive == DeriveType::HARDENED) xprv.Derive(xprv, pos | 0x80000000UL);
                 extkey = xprv.Neuter();
             } else {
-                // TODO: optimize by caching
                 for (auto entry : m_path) {
                     extkey.Derive(extkey, entry);
                 }
@@ -439,7 +440,7 @@ public:
         return ret;
     }
 
-    bool ExpandHelper(int pos, const SigningProvider& arg, Span<const unsigned char>* cache_read, const DescriptorCache* read_cache, std::vector<CScript>& output_scripts, FlatSigningProvider& out, std::vector<unsigned char>* cache_write, DescriptorCache* write_cache) const
+    bool ExpandHelper(int pos, const SigningProvider& arg, const DescriptorCache* read_cache, std::vector<CScript>& output_scripts, FlatSigningProvider& out, DescriptorCache* write_cache) const
     {
         std::vector<std::pair<CPubKey, KeyOriginInfo>> entries;
         entries.reserve(m_pubkey_args.size());
@@ -447,27 +448,12 @@ public:
         // Construct temporary data in `entries` and `subscripts`, to avoid producing output in case of failure.
         for (const auto& p : m_pubkey_args) {
             entries.emplace_back();
-            // If we have a cache, we don't need GetPubKey to compute the public key.
-            // Pass in nullptr to signify only origin info is desired.
-            if (!p->GetPubKey(pos, arg, cache_read ? nullptr : &entries.back().first, entries.back().second, read_cache, write_cache)) return false;
-            if (cache_read) {
-                // Cached expanded public key exists, use it.
-                if (cache_read->size() == 0) return false;
-                bool compressed = ((*cache_read)[0] == 0x02 || (*cache_read)[0] == 0x03) && cache_read->size() >= 33;
-                bool uncompressed = ((*cache_read)[0] == 0x04) && cache_read->size() >= 65;
-                if (!(compressed || uncompressed)) return false;
-                CPubKey pubkey(cache_read->begin(), cache_read->begin() + (compressed ? 33 : 65));
-                entries.back().first = pubkey;
-                *cache_read = cache_read->subspan(compressed ? 33 : 65);
-            }
-            if (cache_write) {
-                cache_write->insert(cache_write->end(), entries.back().first.begin(), entries.back().first.end());
-            }
+            if (!p->GetPubKey(pos, arg, &entries.back().first, entries.back().second, read_cache, write_cache)) return false;
         }
         std::vector<CScript> subscripts;
         if (m_subdescriptor_arg) {
             FlatSigningProvider subprovider;
-            if (!m_subdescriptor_arg->ExpandHelper(pos, arg, cache_read, read_cache, subscripts, subprovider, cache_write, write_cache)) return false;
+            if (!m_subdescriptor_arg->ExpandHelper(pos, arg, read_cache, subscripts, subprovider, write_cache)) return false;
             out = Merge(out, subprovider);
         }
 
@@ -491,15 +477,14 @@ public:
         return true;
     }
 
-    bool Expand(int pos, const SigningProvider& provider, std::vector<CScript>& output_scripts, FlatSigningProvider& out, std::vector<unsigned char>* cache = nullptr, DescriptorCache* write_cache = nullptr) const final
+    bool Expand(int pos, const SigningProvider& provider, std::vector<CScript>& output_scripts, FlatSigningProvider& out, DescriptorCache* write_cache = nullptr) const final
     {
-        return ExpandHelper(pos, provider, nullptr, nullptr, output_scripts, out, cache, write_cache);
+        return ExpandHelper(pos, provider, nullptr, output_scripts, out, write_cache);
     }
 
-    bool ExpandFromCache(int pos, const std::vector<unsigned char>& cache, const DescriptorCache& read_cache, std::vector<CScript>& output_scripts, FlatSigningProvider& out) const final
+    bool ExpandFromCache(int pos, const DescriptorCache& read_cache, std::vector<CScript>& output_scripts, FlatSigningProvider& out) const final
     {
-        Span<const unsigned char> span = MakeSpan(cache);
-        return ExpandHelper(pos, DUMMY_SIGNING_PROVIDER, &span, &read_cache, output_scripts, out, nullptr, nullptr) && span.size() == 0;
+        return ExpandHelper(pos, DUMMY_SIGNING_PROVIDER, &read_cache, output_scripts, out, nullptr);
     }
 
     void ExpandPrivate(int pos, const SigningProvider& provider, FlatSigningProvider& out) const final
