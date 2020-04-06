@@ -95,15 +95,26 @@ class ToolWalletTest(BitcoinTestFramework):
         # shasum_before = self.wallet_shasum()
         timestamp_before = self.wallet_timestamp()
         self.log.debug('Wallet file timestamp before calling info: {}'.format(timestamp_before))
-        out = textwrap.dedent('''\
-            Wallet info
-            ===========
-            Encrypted: no
-            HD (hd seed available): yes
-            Keypool Size: 2
-            Transactions: 0
-            Address Book: 3
-        ''')
+        if self.options.descriptors:
+            out = textwrap.dedent('''\
+                Wallet info
+                ===========
+                Encrypted: no
+                HD (hd seed available): yes
+                Keypool Size: 6
+                Transactions: 0
+                Address Book: 1
+            ''')
+        else:
+            out = textwrap.dedent('''\
+                Wallet info
+                ===========
+                Encrypted: no
+                HD (hd seed available): yes
+                Keypool Size: 2
+                Transactions: 0
+                Address Book: 3
+            ''')
         self.assert_tool_output(out, '-wallet=' + self.default_wallet_name, 'info')
         timestamp_after = self.wallet_timestamp()
         self.log.debug('Wallet file timestamp after calling info: {}'.format(timestamp_after))
@@ -134,15 +145,26 @@ class ToolWalletTest(BitcoinTestFramework):
         shasum_before = self.wallet_shasum()
         timestamp_before = self.wallet_timestamp()
         self.log.debug('Wallet file timestamp before calling info: {}'.format(timestamp_before))
-        out = textwrap.dedent('''\
-            Wallet info
-            ===========
-            Encrypted: no
-            HD (hd seed available): yes
-            Keypool Size: 2
-            Transactions: 1
-            Address Book: 3
-        ''')
+        if self.options.descriptors:
+            out = textwrap.dedent('''\
+                Wallet info
+                ===========
+                Encrypted: no
+                HD (hd seed available): yes
+                Keypool Size: 6
+                Transactions: 1
+                Address Book: 1
+            ''')
+        else:
+            out = textwrap.dedent('''\
+                Wallet info
+                ===========
+                Encrypted: no
+                HD (hd seed available): yes
+                Keypool Size: 2
+                Transactions: 1
+                Address Book: 3
+            ''')
         self.assert_tool_output(out, '-wallet=' + self.default_wallet_name, 'info')
         shasum_after = self.wallet_shasum()
         timestamp_after = self.wallet_timestamp()
