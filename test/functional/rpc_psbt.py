@@ -340,12 +340,15 @@ class PSBTTest(BitcoinTestFramework):
         addr1 = self.nodes[1].getnewaddress("", "bech32")
         txid1 = self.nodes[0].sendtoaddress(addr1, 11)
         vout1 = find_output(self.nodes[0], txid1, 11)
+        tx1 = self.nodes[0].gettransaction(txid1)['hex']
         addr2 = self.nodes[1].getnewaddress("", "legacy")
         txid2 = self.nodes[0].sendtoaddress(addr2, 11)
         vout2 = find_output(self.nodes[0], txid2, 11)
+        tx2 = self.nodes[0].gettransaction(txid2)['hex']
         addr3 = self.nodes[1].getnewaddress("", "p2sh-segwit")
         txid3 = self.nodes[0].sendtoaddress(addr3, 11)
         vout3 = find_output(self.nodes[0], txid3, 11)
+        tx3 = self.nodes[0].gettransaction(txid3)['hex']
         self.sync_all()
 
         def test_psbt_input_keys(psbt_input, keys):
@@ -374,6 +377,13 @@ class PSBTTest(BitcoinTestFramework):
         test_psbt_input_keys(decoded['inputs'][0], ['witness_utxo', 'bip32_derivs'])
         test_psbt_input_keys(decoded['inputs'][1], [])
         test_psbt_input_keys(decoded['inputs'][2], ['witness_utxo', 'bip32_derivs', 'redeem_script'])
+
+        # All inputs should be filled with UTXOs as we are providing all of the previous txs. Bech32 will have witness utxo, the rest non-witness
+        updated = self.nodes[1].utxoupdatepsbt(psbt=psbt, prevtxs=[tx1, tx2, tx3])
+        decoded = self.nodes[1].decodepsbt(updated)
+        test_psbt_input_keys(decoded['inputs'][0], ['witness_utxo'])
+        test_psbt_input_keys(decoded['inputs'][1], ['non_witness_utxo'])
+        test_psbt_input_keys(decoded['inputs'][2], ['non_witness_utxo'])
 
         # Two PSBTs with a common input should not be joinable
         psbt1 = self.nodes[1].createpsbt([{"txid":txid1, "vout":vout1}], {self.nodes[0].getnewaddress():Decimal('10.999')})

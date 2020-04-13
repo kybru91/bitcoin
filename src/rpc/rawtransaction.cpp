@@ -1529,6 +1529,9 @@ UniValue utxoupdatepsbt(const JSONRPCRequest& request)
                          {"range", RPCArg::Type::RANGE, "1000", "Up to what index HD chains should be explored (either end or [begin,end])"},
                     }},
                 }},
+                {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED_NAMED_ARG, "An array of hex strings", {
+                    {"", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "A raw transaction involved as an input in this psbt"},
+                }},
             },
             RPCResult {
                     RPCResult::Type::STR, "", "The base64-encoded partially signed transaction with inputs updated"
@@ -1574,6 +1577,20 @@ UniValue utxoupdatepsbt(const JSONRPCRequest& request)
         view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
     }
 
+    // Parse the prevtxs array
+    std::map<uint256, CTransactionRef> prev_txs;
+    if (!request.params[2].isNull()) {
+        auto prevtxs = request.params[2].get_array();
+        for (size_t i = 0; i < prevtxs.size(); ++i) {
+            CMutableTransaction mtx;
+            if (!DecodeHexTx(mtx, prevtxs[i].get_str(), true)) {
+                throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+            }
+            CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
+            prev_txs.emplace(tx->GetHash(), tx);
+        }
+    }
+
     // Fill the inputs
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
         PSBTInput& input = psbtx.inputs.at(i);
@@ -1586,6 +1603,20 @@ UniValue utxoupdatepsbt(const JSONRPCRequest& request)
 
         if (IsSegWitOutput(provider, coin.out.scriptPubKey)) {
             input.witness_utxo = coin.out;
+        } else {
+            uint256 txid = psbtx.tx->vin[i].prevout.hash;
+            uint32_t vout = psbtx.tx->vin[i].prevout.n;
+            auto it = prev_txs.find(txid);
+            if (it != prev_txs.end()) {
+                if (vout >= it->second->vout.size()) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Output index in PSBT is out of range for given txid");
+                }
+                if (IsSegWitOutput(provider, it->second->vout[vout].scriptPubKey)) {
+                    input.witness_utxo = it->second->vout[vout];
+                } else {
+                    input.non_witness_utxo = it->second;
+                }
+            }
         }
 
         // Update script/keypath information using descriptor data.
@@ -1824,7 +1855,7 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    "finalizepsbt",                 &finalizepsbt,              {"psbt", "extract"} },
     { "rawtransactions",    "createpsbt",                   &createpsbt,                {"inputs","outputs","locktime","replaceable"} },
     { "rawtransactions",    "converttopsbt",                &converttopsbt,             {"hexstring","permitsigdata","iswitness"} },
-    { "rawtransactions",    "utxoupdatepsbt",               &utxoupdatepsbt,            {"psbt", "descriptors"} },
+    { "rawtransactions",    "utxoupdatepsbt",               &utxoupdatepsbt,            {"psbt", "descriptors", "prevtxs"} },
     { "rawtransactions",    "joinpsbts",                    &joinpsbts,                 {"txs"} },
     { "rawtransactions",    "analyzepsbt",                  &analyzepsbt,               {"psbt"} },
 
