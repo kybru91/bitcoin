@@ -1635,6 +1635,53 @@ UniValue utxoupdatepsbt(const JSONRPCRequest& request)
     return EncodeBase64((unsigned char*)ssTx.data(), ssTx.size());
 }
 
+UniValue keysignpsbt(const JSONRPCRequest& request)
+{
+            RPCHelpMan{"keysignpsbt",
+            "\nSigns a PSBT with the given keys\n",
+            {
+                {"psbt", RPCArg::Type::STR, RPCArg::Optional::NO, "A base64 string of a PSBT"},
+                {"privkeys", RPCArg::Type::ARR, RPCArg::Optional::NO, "Array of base58-encoded private keys for signing", {
+                    {"privatekey", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Base58 private key"},
+                }},
+            },
+            RPCResult {
+                    RPCResult::Type::STR, "", "The base64-encoded partially signed transaction with inputs updated"
+            },
+            RPCExamples {
+                HelpExampleCli("keysignpsbt", "\"psbt\"")
+            }}.Check(request);
+
+    RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VARR}, true);
+
+    // Unserialize the transactions
+    PartiallySignedTransaction psbtx;
+    std::string error;
+    if (!DecodeBase64PSBT(psbtx, request.params[0].get_str(), error)) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
+    }
+
+    // Get the privkeys
+    FlatSigningProvider provider;
+    const UniValue& keys = request.params[1].get_array();
+    for (size_t i = 0; i < keys.size(); ++i) {
+        CKey key = DecodeSecret(keys[i].get_str());
+        if (!key.IsValid()) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key");
+        }
+        provider.keys.emplace(key.GetPubKey().GetID(), key);
+    }
+
+    // Sign the inputs
+    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+        SignPSBTInput(provider, psbtx, i, /* sighash_type */ 1);
+    }
+
+    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+    ssTx << psbtx;
+    return EncodeBase64((unsigned char*)ssTx.data(), ssTx.size());
+}
+
 UniValue joinpsbts(const JSONRPCRequest& request)
 {
             RPCHelpMan{"joinpsbts",
@@ -1856,6 +1903,7 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    "createpsbt",                   &createpsbt,                {"inputs","outputs","locktime","replaceable"} },
     { "rawtransactions",    "converttopsbt",                &converttopsbt,             {"hexstring","permitsigdata","iswitness"} },
     { "rawtransactions",    "utxoupdatepsbt",               &utxoupdatepsbt,            {"psbt", "descriptors", "prevtxs"} },
+    { "rawtransactions",    "keysignpsbt",                  &keysignpsbt,               {"psbt", "privkeys"} },
     { "rawtransactions",    "joinpsbts",                    &joinpsbts,                 {"txs"} },
     { "rawtransactions",    "analyzepsbt",                  &analyzepsbt,               {"psbt"} },
 

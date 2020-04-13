@@ -99,6 +99,7 @@ class PSBTTest(BitcoinTestFramework):
         p2wpkh = self.nodes[1].getnewaddress("", "bech32")
         p2pkh = self.nodes[1].getnewaddress("", "legacy")
         p2sh_p2wpkh = self.nodes[1].getnewaddress("", "p2sh-segwit")
+        privkeys = [self.nodes[1].dumpprivkey(p2wpkh), self.nodes[1].dumpprivkey(p2pkh), self.nodes[1].dumpprivkey(p2sh_p2wpkh)]
 
         # fund those addresses
         rawtx = self.nodes[0].createrawtransaction([], {p2sh:10, p2wsh:10, p2wpkh:10, p2sh_p2wsh:10, p2sh_p2wpkh:10, p2pkh:10})
@@ -134,6 +135,8 @@ class PSBTTest(BitcoinTestFramework):
         rawtx = self.nodes[1].walletcreatefundedpsbt([{"txid":txid,"vout":p2wpkh_pos},{"txid":txid,"vout":p2sh_p2wpkh_pos},{"txid":txid,"vout":p2pkh_pos}], {self.nodes[1].getnewaddress():29.99})['psbt']
         walletprocesspsbt_out = self.nodes[1].walletprocesspsbt(rawtx)
         assert_equal(walletprocesspsbt_out['complete'], True)
+        keysignpsbt_out = self.nodes[0].keysignpsbt(rawtx, privkeys)
+        assert_equal(keysignpsbt_out, walletprocesspsbt_out['psbt'])
         self.nodes[1].sendrawtransaction(self.nodes[1].finalizepsbt(walletprocesspsbt_out['psbt'])['hex'])
 
         # feeRate of 0.1 BTC / KB produces a total fee slightly below -maxtxfee (~0.05280000):
