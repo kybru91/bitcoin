@@ -155,6 +155,10 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "logging", 0, "include" },
     { "logging", 1, "exclude" },
     { "disconnectnode", 1, "nodeid" },
+    { "processpsbt", 1, "descriptors" },
+    { "processpsbt", 2, "prevtxs" },
+    { "processpsbt", 3, "privkeys" },
+    { "processpsbt", 4, "extract"},
     // Echo with conversion (For testing only)
     { "echojson", 0, "arg0" },
     { "echojson", 1, "arg1" },

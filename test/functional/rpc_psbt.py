@@ -464,5 +464,20 @@ class PSBTTest(BitcoinTestFramework):
 
         assert_raises_rpc_error(-25, 'Missing inputs', self.nodes[0].walletprocesspsbt, 'cHNidP8BAJoCAAAAAkvEW8NnDtdNtDpsmze+Ht2LH35IJcKv00jKAlUs21RrAwAAAAD/////S8Rbw2cO1020OmybN74e3Ysffkglwq/TSMoCVSzbVGsBAAAAAP7///8CwLYClQAAAAAWABSNJKzjaUb3uOxixsvh1GGE3fW7zQD5ApUAAAAAFgAUKNw0x8HRctAgmvoevm4u1SbN7XIAAAAAAAEAnQIAAAACczMa321tVHuN4GKWKRncycI22aX3uXgwSFUKM2orjRsBAAAAAP7///9zMxrfbW1Ue43gYpYpGdzJwjbZpfe5eDBIVQozaiuNGwAAAAAA/v///wIA+QKVAAAAABl2qRT9zXUVA8Ls5iVqynLHe5/vSe1XyYisQM0ClQAAAAAWABRmWQUcjSjghQ8/uH4Bn/zkakwLtAAAAAAAAQEfQM0ClQAAAAAWABRmWQUcjSjghQ8/uH4Bn/zkakwLtAAAAA==')
 
+        # Test processpsbt
+        self.log.info("Testing processpsbt")
+        utxo = self.nodes[0].listunspent()[0]
+        psbt = self.nodes[0].createpsbt([utxo], {self.nodes[1].getnewaddress(): utxo['amount'] - Decimal('0.0001')})
+        psbt_obj = self.nodes[1].processpsbt(psbt, [utxo['desc']], [self.nodes[0].gettransaction(utxo['txid'])['hex']], [self.nodes[0].dumpprivkey(utxo['address'])])
+        assert_equal(psbt_obj['complete'], True)
+
+        finalized = self.nodes[1].finalizepsbt(psbt_obj['psbt'])
+        assert_equal(psbt_obj['hex'], finalized['hex'])
+
+        # Check that extract can be False
+        psbt_obj = self.nodes[1].processpsbt(psbt, [utxo['desc']], [self.nodes[0].gettransaction(utxo['txid'])['hex']], [self.nodes[0].dumpprivkey(utxo['address'])], False)
+        assert 'extract' not in psbt_obj
+        assert_equal(psbt_obj['complete'], True)
+
 if __name__ == '__main__':
     PSBTTest().main()

@@ -1682,6 +1682,138 @@ UniValue keysignpsbt(const JSONRPCRequest& request)
     return EncodeBase64((unsigned char*)ssTx.data(), ssTx.size());
 }
 
+UniValue processpsbt(const JSONRPCRequest& request)
+{
+            RPCHelpMan{"processpsbt",
+            "\nUpdate the PSBT with the information given. If private keys are given, the PSBT will be signed too.\n"
+            "If the transaction is complete, then it will optionally be finalized and extracted.\n"
+            "A PSBT will always be returned with the hex complete transaction optionally returned.\n",
+            {
+                {"psbt", RPCArg::Type::STR, RPCArg::Optional::NO, "A base64 string of a PSBT"},
+                {"descriptors", RPCArg::Type::ARR, RPCArg::Optional::OMITTED_NAMED_ARG, "An array of either strings or objects", {
+                    {"", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "An output descriptor optionally with private keys"},
+                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "An object with an output descriptor and extra information", {
+                         {"desc", RPCArg::Type::STR, RPCArg::Optional::NO, "An output descriptor"},
+                         {"range", RPCArg::Type::RANGE, "1000", "Up to what index HD chains should be explored (either end or [begin,end])"},
+                    }},
+                }},
+                {"prevtxs", RPCArg::Type::ARR, RPCArg::Optional::OMITTED_NAMED_ARG, "An array of hex strings", {
+                    {"", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "A raw transaction involved as an input in this psbt"},
+                }},
+                {"privkeys", RPCArg::Type::ARR, RPCArg::Optional::OMITTED_NAMED_ARG, "Array of base58-encoded private keys for signing", {
+                    {"", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "Base58 private key"},
+                }},
+                {"extract", RPCArg::Type::BOOL, /* default */ "true", "Whether to extract the transaction if it is complete"},
+            },
+            RPCResult{
+                RPCResult::Type::OBJ, "", "",
+                {
+                    {RPCResult::Type::STR, "psbt", "The base64-encoded partially signed transaction if not extracted"},
+                    {RPCResult::Type::STR_HEX, "hex", "The hex-encoded network transaction if extracted"},
+                    {RPCResult::Type::BOOL, "complete", "If the transaction has a complete set of signatures"},
+                }
+            },
+            RPCExamples {
+                HelpExampleCli("processpsbt", "\"psbt\"")
+            }}.Check(request);
+
+    RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VARR, UniValue::VARR, UniValue::VARR, UniValue::VBOOL}, true);
+
+    // Unserialize the transactions
+    PartiallySignedTransaction psbtx;
+    std::string error;
+    if (!DecodeBase64PSBT(psbtx, request.params[0].get_str(), error)) {
+        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
+    }
+
+    // Parse descriptors, if any.
+    FlatSigningProvider provider;
+    if (!request.params[1].isNull()) {
+        auto descs = request.params[1].get_array();
+        for (size_t i = 0; i < descs.size(); ++i) {
+            EvalDescriptorStringOrObject(descs[i], provider);
+        }
+    }
+
+    // Parse the prevtxs array
+    std::map<uint256, CTransactionRef> prev_txs;
+    if (!request.params[2].isNull()) {
+        auto prevtxs = request.params[2].get_array();
+        for (size_t i = 0; i < prevtxs.size(); ++i) {
+            CMutableTransaction mtx;
+            if (!DecodeHexTx(mtx, prevtxs[i].get_str(), true)) {
+                throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
+            }
+            CTransactionRef tx(MakeTransactionRef(std::move(mtx)));
+            prev_txs.emplace(tx->GetHash(), tx);
+        }
+    }
+
+    // Get the privkeys
+    if (!request.params[3].isNull()) {
+        const UniValue& keys = request.params[3].get_array();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            CKey key = DecodeSecret(keys[i].get_str());
+            if (!key.IsValid()) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key");
+            }
+            provider.keys.emplace(key.GetPubKey().GetID(), key);
+        }
+    }
+
+    // Fill the inputs
+    for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
+        PSBTInput& input = psbtx.inputs.at(i);
+
+        if (input.non_witness_utxo || !input.witness_utxo.IsNull()) {
+            continue;
+        }
+
+        uint256 txid = psbtx.tx->vin[i].prevout.hash;
+        uint32_t vout = psbtx.tx->vin[i].prevout.n;
+        auto it = prev_txs.find(txid);
+        if (it != prev_txs.end()) {
+            if (vout >= it->second->vout.size()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Output index in PSBT is out of range for given txid");
+            }
+            if (IsSegWitOutput(provider, it->second->vout[vout].scriptPubKey)) {
+                input.witness_utxo = it->second->vout[vout];
+            } else {
+                input.non_witness_utxo = it->second;
+            }
+        }
+
+        SignPSBTInput(provider, psbtx, i, /* sighash_type */ 1);
+    }
+
+    // Update script/keypath information using descriptor data.
+    for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
+        UpdatePSBTOutput(provider, psbtx, i);
+    }
+
+    // Finalize
+    bool complete = FinalizePSBT(psbtx);
+
+    UniValue result(UniValue::VOBJ);
+    CDataStream ss_psbt(SER_NETWORK, PROTOCOL_VERSION);
+    ss_psbt << psbtx;
+    result.pushKV("psbt", EncodeBase64(ss_psbt.str()));
+
+    bool extract = request.params[4].isNull() || (!request.params[4].isNull() && request.params[4].get_bool());
+
+    if (complete && extract) {
+        CMutableTransaction mtx;
+        FinalizeAndExtractPSBT(psbtx, mtx);
+        CDataStream ss_tx(SER_NETWORK, PROTOCOL_VERSION);
+        ss_tx << mtx;
+        result.pushKV("hex", HexStr(ss_tx.str()));
+    }
+
+    result.pushKV("complete", complete);
+
+    return result;
+}
+
 UniValue joinpsbts(const JSONRPCRequest& request)
 {
             RPCHelpMan{"joinpsbts",
@@ -1906,6 +2038,7 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    "keysignpsbt",                  &keysignpsbt,               {"psbt", "privkeys"} },
     { "rawtransactions",    "joinpsbts",                    &joinpsbts,                 {"txs"} },
     { "rawtransactions",    "analyzepsbt",                  &analyzepsbt,               {"psbt"} },
+    { "rawtransactions",    "processpsbt",                  &processpsbt,               {"psbt", "descriptors", "prevtxs", "privkeys", "extract"} },
 
     { "blockchain",         "gettxoutproof",                &gettxoutproof,             {"txids", "blockhash"} },
     { "blockchain",         "verifytxoutproof",             &verifytxoutproof,          {"proof"} },
