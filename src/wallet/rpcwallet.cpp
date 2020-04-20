@@ -4077,6 +4077,8 @@ UniValue walletprocesspsbt(const JSONRPCRequest& request)
             "       \"NONE|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\""},
                     {"bip32derivs", RPCArg::Type::BOOL, /* default */ "true", "Include BIP 32 derivation paths for public keys if we know them"},
+                    {"finalize", RPCArg::Type::BOOL, /* default */ "true", "Whether to finalize the transaction if it is complete"},
+                    {"extract", RPCArg::Type::BOOL, /* default */ "true", "Whether to extract the transaction if it is complete. Implies finalize=true"},
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
@@ -4111,12 +4113,27 @@ UniValue walletprocesspsbt(const JSONRPCRequest& request)
         throw JSONRPCTransactionError(err);
     }
 
-    UniValue result(UniValue::VOBJ);
-    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
-    ssTx << psbtx;
-    result.pushKV("psbt", EncodeBase64(ssTx.str()));
-    result.pushKV("complete", complete);
+    // Finalize
+    bool finalize = request.params[4].isNull() || (!request.params[4].isNull() && request.params[4].get_bool());
+    bool extract = request.params[5].isNull() || (!request.params[5].isNull() && request.params[5].get_bool());
+    if (finalize || extract) {
+        FinalizePSBT(psbtx);
+    }
 
+    UniValue result(UniValue::VOBJ);
+    CDataStream ss_psbt(SER_NETWORK, PROTOCOL_VERSION);
+    ss_psbt << psbtx;
+    result.pushKV("psbt", EncodeBase64(ss_psbt.str()));
+
+    if (complete && extract) {
+        CMutableTransaction mtx;
+        FinalizeAndExtractPSBT(psbtx, mtx);
+        CDataStream ss_tx(SER_NETWORK, PROTOCOL_VERSION);
+        ss_tx << mtx;
+        result.pushKV("hex", HexStr(ss_tx.str()));
+    }
+
+    result.pushKV("complete", complete);
     return result;
 }
 

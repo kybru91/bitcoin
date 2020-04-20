@@ -85,8 +85,9 @@ class PSBTTest(BitcoinTestFramework):
         assert_equal(psbtx1, psbtx)
 
         # Sign the transaction and send
-        signed_tx = self.nodes[0].walletprocesspsbt(psbtx)['psbt']
-        final_tx = self.nodes[0].finalizepsbt(signed_tx)['hex']
+        signed_tx = self.nodes[0].walletprocesspsbt(psbtx)
+        final_tx = self.nodes[0].finalizepsbt(signed_tx['psbt'])['hex']
+        assert_equal(signed_tx['hex'], final_tx)
         self.nodes[0].sendrawtransaction(final_tx)
 
         # Create p2sh, p2wpkh, and p2wsh addresses
