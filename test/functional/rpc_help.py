@@ -49,6 +49,7 @@ class HelpRpcTest(BitcoinTestFramework):
         os.mkdir(dump_dir)
         calls = [line.split(' ', 1)[0] for line in self.nodes[0].help().splitlines() if line and not line.startswith('==')]
         for call in calls:
+            print(call)
             with open(os.path.join(dump_dir, call), 'w', encoding='utf-8') as f:
                 # Make sure the node can generate the help at runtime without crashing
                 f.write(self.nodes[0].help(call))

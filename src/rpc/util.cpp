@@ -708,8 +708,11 @@ std::string RPCArg::ToStringObj(const bool oneline) const
         return res + "...]";
     case Type::OBJ:
     case Type::OBJ_USER_KEYS:
-        // Currently unused, so avoid writing dead code
-        CHECK_NONFATAL(false);
+        res += "{";
+        for (const auto& i: m_inner) {
+            res += i.ToString(oneline) + ",";
+        }
+        return res + "}";
 
         // no default case, so the compiler can warn about missing cases
     }

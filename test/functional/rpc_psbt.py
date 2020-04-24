@@ -292,7 +292,58 @@ class PSBTTest(BitcoinTestFramework):
 
         # Valid PSBTs
         for valid in valids:
-            self.nodes[0].decodepsbt(valid)
+            decoded = self.nodes[0].decodepsbt(valid)
+            inputs = []
+            outputs = []
+            for i in range(0, len(decoded['tx']['vin'])):
+                txin = decoded['tx']['vin'][i]
+                psbt_in = decoded['inputs'][i]
+
+                input_data = {
+                    'txid': txin['txid'],
+                    'vout': txin['vout'],
+                    'sequence': txin['sequence'],
+                }
+                for k, v in psbt_in.items():
+                    if k in ['non_witness_utxo',
+                            'witness_utxo',
+                            'redeem_script',
+                            'witness_script',
+                            'final_scriptSig',
+                            'final_scriptwitness']:
+                        input_data[k] = v['hex']
+                    elif k == 'bip32_derivs':
+                        derivs = {}
+                        for pk in psbt_in[k]:
+                            path = pk['master_fingerprint'] + pk['path'][1:]
+                            derivs[pk['pubkey']] = path
+                        input_data[k] = derivs
+                    else:
+                        input_data[k] = v
+                inputs.append(input_data)
+
+            for i in range(0, len(decoded['tx']['vout'])):
+                txout = decoded['tx']['vout'][i]
+                psbt_out = decoded['outputs'][i]
+
+                output_data = {
+                    'txout': {txout['scriptPubKey']['addresses'][0]: txout['value']}
+                }
+                for k, v in psbt_out.items():
+                    if k in ['redeem_script', 'witness_script']:
+                        output_data[k] = v
+                    elif k == 'bip32_derivs':
+                        derivs = {}
+                        for pk in psbt_out[k]:
+                            path = pk['master_fingerprint'] + pk['path'][1:]
+                            derivs[pk['pubkey']] = path
+                        output_data[k] = derivs
+                    else:
+                        output_data[k] = v
+                outputs.append(output_data)
+
+            composed = self.nodes[0].composepsbt(inputs, outputs, decoded['tx']['locktime'])
+            assert_equal(valid, composed)
 
         # Creator Tests
         for creator in creators:

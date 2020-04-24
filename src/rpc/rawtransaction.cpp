@@ -28,6 +28,7 @@
 #include <script/signingprovider.h>
 #include <script/standard.h>
 #include <uint256.h>
+#include <util/bip32.h>
 #include <util/moneystr.h>
 #include <util/strencodings.h>
 #include <util/string.h>
@@ -1124,10 +1125,15 @@ UniValue decodepsbt(const JSONRPCRequest& request)
             UniValue o(UniValue::VOBJ);
             ScriptToUniv(txout.scriptPubKey, o, true);
             out.pushKV("scriptPubKey", o);
+
+            CDataStream ss_spk(SER_NETWORK, PROTOCOL_VERSION);
+            ss_spk << txout;
+            out.pushKV("hex", HexStr(ss_spk.begin(), ss_spk.end()));
+
             in.pushKV("witness_utxo", out);
         } else if (input.non_witness_utxo) {
             UniValue non_wit(UniValue::VOBJ);
-            TxToUniv(*input.non_witness_utxo, uint256(), non_wit, false);
+            TxToUniv(*input.non_witness_utxo, uint256(), non_wit, true);
             in.pushKV("non_witness_utxo", non_wit);
             CAmount utxo_val = input.non_witness_utxo->vout[psbtx.tx->vin[i].prevout.n].nValue;
             if (MoneyRange(utxo_val) && MoneyRange(total_in + utxo_val)) {
@@ -2015,6 +2021,385 @@ UniValue analyzepsbt(const JSONRPCRequest& request)
     return result;
 }
 
+UniValue composepsbt(const JSONRPCRequest& request)
+{
+    RPCHelpMan{"composepsbt",
+        "\nTakes all input and output information for a PSBT and puts it together into a PSBT\n",
+        {
+            {"inputs", RPCArg::Type::ARR, RPCArg::Optional::NO, "The input json objects",
+                {
+                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                        {
+                            {"txid", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The transaction id"},
+                            {"vout", RPCArg::Type::NUM, RPCArg::Optional::NO, "The output number"},
+                            {"sequence", RPCArg::Type::NUM, /* default */ "depends on the value of the 'replaceable' and 'locktime' arguments", "The sequence number"},
+                            {"non_witness_utxo", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The full previous tranaction for the output spent byt this input if it is a non-witness input"},
+                            {"witness_utxo", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The transaction output being spent by this input if it is a segwit input"},
+                            {"partial_signatures", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "Object containing public keys and their signatures",
+                                {
+                                    {"signature", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "A key-value pair where the key is a hex pubkey and the value is a hex signature"},
+                                },
+                            },
+                            {"redeem_script", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The redeemScript for this input if it has one"},
+                            {"witness_script", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The witnessScript for this input if it has one"},
+                            {"sighash", RPCArg::Type::STR, RPCArg::Optional::OMITTED_NAMED_ARG, "The sighash type to use for this input"},
+                            {"bip32_derivs", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "Object containing public keys and their key origin info",
+                                {
+                                    {"pubkey", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "A key-value pair where the key is a hex pubkey and the value is a combined fingerprint and path (i.e. descriptor key origin info)"},
+                                },
+                            },
+                            {"final_scriptSig", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The final scriptSig for this input if it has one"},
+                            {"final_scriptwitness", RPCArg::Type::ARR, RPCArg::Optional::OMITTED_NAMED_ARG, "The final scriptWitness for this input if it has one",
+                                {
+                                    {"hex", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "Hex encoded witness data elements"},
+                                }
+                            },
+                            {"unknowns", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "Object containing unknown PSBT key-value pairs",
+                                {
+                                    {"key", RPCArg::Type::STR, RPCArg::Optional::NO, "A key-value pair where the key is a hex string and the value is a string"},
+                                },
+                            },
+                        },
+                        },
+                },
+            },
+            {"outputs", RPCArg::Type::ARR, RPCArg::Optional::NO, "The output json objects",
+                {
+                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                        {
+                            {"txout", RPCArg::Type::OBJ, RPCArg::Optional::NO, "A key-value pair specifying the scriptPubKey and amount for this output",
+                                {
+                                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                                        {
+                                            {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the bitcoin address, the value (float or string) is the amount in " + CURRENCY_UNIT},
+                                        },
+                                    },
+                                    {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
+                                        {
+                                            {"data", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "A key-value pair. The key must be \"data\", the value is hex-encoded data"},
+                                        },
+                                    },
+                                },
+                            },
+                            {"redeem_script", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The redeemScript for this input if it has one"},
+                            {"witness_script", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "The witnessScript for this input if it has one"},
+                            {"bip32_derivs", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "Object containing public keys and their key origin info",
+                                {
+                                    {"pubkey", RPCArg::Type::STR, RPCArg::Optional::NO, "A key-value pair where the key is a hex pubkey and the value is a combined fingerprint and path (i.e. descriptor key origin info)"},
+                                },
+                            },
+                            {"unknowns", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "Object containing unknown PSBT key-value pairs",
+                                {
+                                    {"", RPCArg::Type::STR, RPCArg::Optional::NO, "A key-value pair where the key is a hex string and the value is a string"},
+                                },
+                            },
+                        },
+                        },
+                },
+            },
+            {"locktime", RPCArg::Type::NUM, /* default */ "0", "Raw locktime. Non-0 value also locktime-activates inputs"},
+            {"replaceable", RPCArg::Type::BOOL, /* default */ "false", "Marks this transaction as BIP125 replaceable.\n"
+            "                             Allows this transaction to be replaced by a transaction with higher fees. If provided, it is an error if explicit sequence numbers are incompatible."},
+        },
+        RPCResult{
+            RPCResult::Type::STR, "", "The resulting raw transaction (base64-encoded string)"
+        },
+        RPCExamples{
+            HelpExampleCli("composepsbt", "\"[{\\\"txid\\\":\\\"myid\\\",\\\"vout\\\":0}]\" \"[{\\\"data\\\":\\\"00010203\\\"}]\"")
+        },
+    }.Check(request);
+
+
+    RPCTypeCheck(request.params, {
+        UniValue::VARR,
+        UniValue::VARR,
+        UniValue::VNUM,
+        UniValue::VBOOL,
+        }, true
+    );
+
+
+    bool rbf = false;
+    if (!request.params[3].isNull()) {
+        rbf = request.params[3].isTrue();
+    }
+
+    // Pull out txout from each output for ConstructTransaction
+    const UniValue& outputs = request.params[1].get_array();
+    UniValue txouts(UniValue::VARR);
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        UniValue o = outputs[i];
+        txouts.push_back(find_value(o, "txout"));
+    }
+
+    CMutableTransaction rawTx = ConstructTransaction(request.params[0], txouts, request.params[2], rbf);
+
+    // Make a psbt
+    PartiallySignedTransaction psbtx;
+    psbtx.tx = rawTx;
+    for (unsigned int i = 0; i < rawTx.vin.size(); ++i) {
+        PSBTInput input;
+        const CTxIn& txin = rawTx.vin.at(i);
+        UniValue input_data = request.params[0].get_array()[i].get_obj();
+
+        if (input_data.exists("non_witness_utxo")) {
+            std::string tx_str = find_value(input_data, "non_witness_utxo").get_str();
+            CMutableTransaction mtx;
+            if (!DecodeHexTx(mtx, tx_str, true, true)) {
+                throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Input non_witness_utxo decoded failed");
+            }
+            if (mtx.GetHash() != txin.prevout.hash) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Given non_witness_utxo's txid does not match specified input txid");
+            }
+            if (txin.prevout.n >= mtx.vout.size()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Given non_witness_utxo does not have specified input vout");
+            }
+
+            // Check if this is a witness output. If so, make this a witness utxo
+            CTxDestination dest;
+            ExtractDestination(mtx.vout.at(txin.prevout.n).scriptPubKey, dest);
+            if (dest.which() > 2 /* Witness* destinations */) {
+                input.witness_utxo = mtx.vout.at(txin.prevout.n);
+            } else {
+                input.non_witness_utxo = MakeTransactionRef(std::move(mtx));
+            }
+        }
+
+        if (input_data.exists("witness_utxo")) {
+            std::string utxo_str = find_value(input_data, "witness_utxo").get_str();
+            std::vector<unsigned char> utxo_bytes = ParseHex(utxo_str);
+            VectorReader vr(SER_NETWORK, PROTOCOL_VERSION, utxo_bytes, 0);
+
+            CTxOut utxo;
+            vr >> utxo;
+            input.witness_utxo = utxo;
+        }
+
+        if (input_data.exists("partial_signatures")) {
+            std::map<std::string, UniValue> partial_sigs_map;
+            find_value(input_data, "partial_signatures").getObjMap(partial_sigs_map);
+            for (const auto sig_pair : partial_sigs_map) {
+                std::string pubkey_str = sig_pair.first;
+                std::string sig_str = sig_pair.second.get_str();
+                std::vector<unsigned char> pubkey_bytes = ParseHex(pubkey_str);
+                std::vector<unsigned char> sig = ParseHex(sig_str);
+                CPubKey pubkey(pubkey_bytes.begin(), pubkey_bytes.end());
+
+                input.partial_sigs.emplace(pubkey.GetID(), SigPair(pubkey, sig));
+            }
+        }
+
+        if (input_data.exists("redeem_script")) {
+            std::vector<unsigned char> script_bytes = ParseHexO(input_data, "redeem_script");
+            CScript redeem_script = CScript(script_bytes.begin(), script_bytes.end());
+
+            // Check that the output being spent is P2SH
+            CTxOut utxo;
+            if (input.non_witness_utxo) {
+                utxo = input.non_witness_utxo->vout.at(txin.prevout.n);
+            } else if (!input.witness_utxo.IsNull()) {
+                utxo = input.witness_utxo;
+            } else {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "redeem_script given but no UTXO available to check");
+            }
+            if (!utxo.scriptPubKey.IsPayToScriptHash()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "redeem_script given for non-P2SH input");
+            }
+
+            // Check that the redeemScript matches the scriptPubKey
+            ScriptHash sh(redeem_script);
+            CScript rs_spk = GetScriptForDestination(sh);
+            if (rs_spk != utxo.scriptPubKey) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "redeem_script does not match outputs script");
+            }
+
+            if (input.non_witness_utxo) {
+                // Check if this is a witness output. If so, make this a witness utxo
+                CTxDestination dest;
+                ExtractDestination(redeem_script, dest);
+                if (dest.which() > 2 /* Witness* destinations */) {
+                    input.witness_utxo = input.non_witness_utxo->vout.at(txin.prevout.n);
+                    input.non_witness_utxo = nullptr;
+                }
+            }
+            input.redeem_script = redeem_script;
+        }
+
+        if (input_data.exists("witness_script")) {
+            std::vector<unsigned char> script_bytes = ParseHexO(input_data, "witness_script");
+            CScript witness_script = CScript(script_bytes.begin(), script_bytes.end());
+
+            // Check that the output being spent is P2WSH
+            CTxOut utxo;
+            if (!input.witness_utxo.IsNull()) {
+                utxo = input.witness_utxo;
+            } else {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "witness_script given but no witness UTXO available to check");
+            }
+            CScript script_code = utxo.scriptPubKey;
+            if (script_code.IsPayToScriptHash()) {
+                script_code = input.redeem_script;
+            }
+            if (!script_code.IsPayToWitnessScriptHash()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "witness_script given for non-P2WSH input");
+            }
+
+            // Check that the witnessScript matches the script_code
+            WitnessV0ScriptHash wsh(witness_script);
+            CScript ws_spk = GetScriptForDestination(wsh);
+            if (ws_spk != script_code) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "witness_script does not match outputs script");
+            }
+
+            input.witness_script = witness_script;
+        }
+
+        if (input_data.exists("sighash")) {
+            input.sighash_type = ParseSighashString(find_value(input_data, "sighash"));
+        }
+
+        if (input_data.exists("bip32_derivs")) {
+            std::map<std::string, UniValue> hd_keypaths_map;
+            find_value(input_data, "bip32_derivs").getObjMap(hd_keypaths_map);
+            for (const auto key_pair : hd_keypaths_map) {
+                std::string pubkey_str = key_pair.first;
+                std::string path_str = key_pair.second.get_str();
+                std::vector<unsigned char> pubkey_bytes = ParseHex(pubkey_str);
+                CPubKey pubkey(pubkey_bytes.begin(), pubkey_bytes.end());
+
+                std::string fpr_str(path_str.begin(), path_str.begin() + 8);
+                std::vector<unsigned char> fpr = ParseHex(fpr_str);
+                path_str = "m" + path_str.substr(8);
+
+                KeyOriginInfo info;
+                if (!ParseHDKeypath(path_str, info.path)) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Malformed derivation path info");
+                }
+                std::copy(fpr.begin(), fpr.begin() + 4, info.fingerprint);
+
+                input.hd_keypaths.emplace(pubkey, info);
+            }
+        }
+
+        if (input_data.exists("final_scriptSig")) {
+            std::vector<unsigned char> script_bytes = ParseHexO(input_data, "final_scriptSig");
+            input.final_script_sig = CScript(script_bytes.begin(), script_bytes.end());
+        }
+
+        if (input_data.exists("final_scriptwitness")) {
+            CScriptWitness sw;
+            UniValue final_sw_univ = find_value(input_data, "final_scriptwitness");
+            std::vector<UniValue> final_sw_arr = final_sw_univ.getValues();
+            for (const UniValue& univ : final_sw_arr) {
+                sw.stack.push_back(ParseHex(univ.get_str()));
+            }
+            input.final_script_witness = sw;
+        }
+
+        if (input_data.exists("unknowns")) {
+            std::map<std::string, UniValue> unknowns_map;
+            find_value(input_data, "unknowns").getObjMap(unknowns_map);
+            for (const auto unknown_pair : unknowns_map) {
+                std::string key_str = unknown_pair.first;
+                std::string value_str = unknown_pair.second.get_str();
+
+                input.unknown.emplace(ParseHex(key_str), ParseHex(value_str));
+            }
+        }
+
+        psbtx.inputs.push_back(input);
+    }
+    for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
+        PSBTOutput output;
+        const CTxOut& txout = rawTx.vout.at(i);
+        UniValue output_data = request.params[1].get_array()[i].get_obj();
+
+        if (output_data.exists("redeem_script")) {
+            std::vector<unsigned char> script_bytes = ParseHexO(output_data, "redeem_script");
+            CScript redeem_script = CScript(script_bytes.begin(), script_bytes.end());
+
+            // Check that the output being spent is P2SH
+            if (!txout.scriptPubKey.IsPayToScriptHash()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "redeem_script given for non-P2SH output");
+            }
+
+            // Check that the redeemScript matches the scriptPubKey
+            ScriptHash sh(redeem_script);
+            CScript rs_spk = GetScriptForDestination(sh);
+            if (rs_spk != txout.scriptPubKey) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "redeem_script does not match outputs script");
+            }
+
+            output.redeem_script = redeem_script;
+        }
+
+        if (output_data.exists("witness_script")) {
+            std::vector<unsigned char> script_bytes = ParseHexO(output_data, "witness_script");
+            CScript witness_script = CScript(script_bytes.begin(), script_bytes.end());
+
+            // Check that the output being spent is P2WSH
+            CScript script_code = txout.scriptPubKey;
+            if (script_code.IsPayToScriptHash()) {
+                script_code = output.redeem_script;
+            }
+            if (!script_code.IsPayToWitnessScriptHash()) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "witness_script given for non-P2WSH output");
+            }
+
+            // Check that the witnessScript matches the script_code
+            WitnessV0ScriptHash wsh(witness_script);
+            CScript ws_spk = GetScriptForDestination(wsh);
+            if (ws_spk != script_code) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "witness_script does not match outputs script");
+            }
+
+            output.witness_script = witness_script;
+        }
+
+        if (output_data.exists("bip32_derivs")) {
+            std::map<std::string, UniValue> hd_keypaths_map;
+            find_value(output_data, "bip32_derivs").getObjMap(hd_keypaths_map);
+            for (const auto key_pair : hd_keypaths_map) {
+                std::string pubkey_str = key_pair.first;
+                std::string path_str = key_pair.second.get_str();
+                std::vector<unsigned char> pubkey_bytes = ParseHex(pubkey_str);
+                CPubKey pubkey(pubkey_bytes.begin(), pubkey_bytes.end());
+
+                std::string fpr_str(path_str.begin(), path_str.begin() + 8);
+                std::vector<unsigned char> fpr = ParseHex(fpr_str);
+                path_str = "m" + path_str.substr(8);
+
+                KeyOriginInfo info;
+                if (!ParseHDKeypath(path_str, info.path)) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Malformed output derivation path info");
+                }
+                std::copy(fpr.begin(), fpr.begin() + 4, info.fingerprint);
+
+                output.hd_keypaths.emplace(pubkey, info);
+            }
+        }
+
+        if (output_data.exists("unknowns")) {
+            std::map<std::string, UniValue> unknowns_map;
+            find_value(output_data, "unknowns").getObjMap(unknowns_map);
+            for (const auto unknown_pair : unknowns_map) {
+                std::string key_str = unknown_pair.first;
+                std::string value_str = unknown_pair.second.get_str();
+
+                output.unknown.emplace(ParseHex(key_str), ParseHex(value_str));
+            }
+        }
+
+        psbtx.outputs.push_back(output);
+    }
+
+    // Serialize the PSBT
+    CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+    ssTx << psbtx;
+
+    return EncodeBase64((unsigned char*)ssTx.data(), ssTx.size());
+}
+
 void RegisterRawTransactionRPCCommands(CRPCTable &t)
 {
 // clang-format off
@@ -2031,6 +2416,7 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    "testmempoolaccept",            &testmempoolaccept,         {"rawtxs","maxfeerate"} },
     { "rawtransactions",    "decodepsbt",                   &decodepsbt,                {"psbt"} },
     { "rawtransactions",    "combinepsbt",                  &combinepsbt,               {"txs"} },
+    { "rawtransactions",    "composepsbt",                  &composepsbt,               {"inputs","outputs","locktime","replaceable"} },
     { "rawtransactions",    "finalizepsbt",                 &finalizepsbt,              {"psbt", "extract"} },
     { "rawtransactions",    "createpsbt",                   &createpsbt,                {"inputs","outputs","locktime","replaceable"} },
     { "rawtransactions",    "converttopsbt",                &converttopsbt,             {"hexstring","permitsigdata","iswitness"} },
