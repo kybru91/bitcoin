@@ -422,7 +422,6 @@ public:
         return (ret == 0);
     }
 
-    bool static Rewrite(BerkeleyDatabase& database, const char* pszSkip = nullptr);
 };
 
 std::string BerkeleyDatabaseVersion();
