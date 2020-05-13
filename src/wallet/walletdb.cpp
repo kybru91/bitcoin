@@ -13,6 +13,7 @@
 #include <util/bip32.h>
 #include <util/system.h>
 #include <util/time.h>
+#include <wallet/bdb.h>
 #include <wallet/wallet.h>
 
 #include <atomic>
@@ -1019,4 +1020,28 @@ bool WalletBatch::TxnCommit()
 bool WalletBatch::TxnAbort()
 {
     return m_database.TxnAbort();
+}
+
+bool IsWalletLoaded(const fs::path& wallet_path)
+{
+    return IsBDBWalletLoaded(wallet_path);
+}
+
+/** Return object for accessing database at specified path. */
+std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path)
+{
+    std::string filename;
+    return MakeUnique<BerkeleyDatabase>(GetWalletEnv(path, filename), std::move(filename));
+}
+
+/** Return object for accessing dummy database with no read/write capabilities. */
+std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase()
+{
+    return MakeUnique<BerkeleyDatabase>();
+}
+
+/** Return object for accessing temporary in-memory database. */
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase()
+{
+    return MakeUnique<BerkeleyDatabase>(std::make_shared<BerkeleyEnvironment>(), "");
 }
