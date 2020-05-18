@@ -165,6 +165,7 @@ bool SQLiteDatabase::Backup(const std::string& dest) const
 
 void SQLiteDatabase::Close()
 {
+    assert(m_refcount == 0);
     int res = sqlite3_close(m_db);
     if (res != SQLITE_OK) {
         throw std::runtime_error(strprintf("SQLiteDatabase: Failed to close database: %s\n", sqlite3_errstr(res)));
@@ -184,10 +185,12 @@ void SQLiteDatabase::ReloadDbEnv()
 
 void SQLiteDatabase::Release()
 {
+    m_refcount--;
 }
 
 void SQLiteDatabase::Acquire()
 {
+    m_refcount++;
 }
 
 bool SQLiteDatabase::DBRead(CDataStream& key, CDataStream& value) const
