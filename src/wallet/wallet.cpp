@@ -3689,19 +3689,31 @@ bool CWallet::Verify(interfaces::Chain& chain, const WalletLocation& location, b
     }
 
     // Keep same database environment instance across Verify/Recover calls below.
-    std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(wallet_path);
+    std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(wallet_path, StorageType::NONE);
     return database->Verify(error_string);
 }
 
 std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain, const WalletLocation& location, bilingual_str& error, std::vector<bilingual_str>& warnings, uint64_t wallet_creation_flags)
 {
+    StorageType storage_type = StorageType::NONE; // By default we want to auto detect
+
+    // If the file doesn't exist, we are creating. So figure out what storage we're going to use
+    if (!location.Exists()) {
+        // Default to BDB
+        storage_type = StorageType::BDB;
+        // For creating new descriptor wallets, use SQLite
+        if (wallet_creation_flags & WALLET_FLAG_DESCRIPTORS) {
+            storage_type = StorageType::SQLITE;
+        }
+    }
+
     // needed to restore wallet transaction meta data after -zapwallettxes
     std::list<CWalletTx> vWtx;
 
     if (gArgs.GetBoolArg("-zapwallettxes", false)) {
         chain.initMessage(_("Zapping all transactions from wallet...").translated);
 
-        std::unique_ptr<CWallet> tempWallet = MakeUnique<CWallet>(&chain, location, CreateWalletDatabase(location.GetPath()));
+        std::unique_ptr<CWallet> tempWallet = MakeUnique<CWallet>(&chain, location, CreateWalletDatabase(location.GetPath(), storage_type));
         DBErrors nZapWalletRet = tempWallet->ZapWalletTx(vWtx);
         if (nZapWalletRet != DBErrors::LOAD_OK) {
             error = strprintf(_("Error loading %s: Wallet corrupted"), tempWallet->GetDatabase().GetFilePath());
@@ -3715,7 +3727,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
     bool fFirstRun = true;
     // TODO: Can't use std::make_shared because we need a custom deleter but
     // should be possible to use std::allocate_shared.
-    std::shared_ptr<CWallet> walletInstance(new CWallet(&chain, location, CreateWalletDatabase(location.GetPath())), ReleaseWallet);
+    std::shared_ptr<CWallet> walletInstance(new CWallet(&chain, location, CreateWalletDatabase(location.GetPath(), storage_type)), ReleaseWallet);
     DBErrors nLoadWalletRet = walletInstance->LoadWallet(fFirstRun);
     if (nLoadWalletRet != DBErrors::LOAD_OK) {
         if (nLoadWalletRet == DBErrors::CORRUPT) {

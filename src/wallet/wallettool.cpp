@@ -29,7 +29,7 @@ static std::shared_ptr<CWallet> CreateWallet(const std::string& name, const fs::
         return nullptr;
     }
     // dummy chain interface
-    std::shared_ptr<CWallet> wallet_instance(new CWallet(nullptr /* chain */, WalletLocation(name), CreateWalletDatabase(path)), WalletToolReleaseWallet);
+    std::shared_ptr<CWallet> wallet_instance(new CWallet(nullptr /* chain */, WalletLocation(name), CreateWalletDatabase(path, StorageType::BDB)), WalletToolReleaseWallet);
     LOCK(wallet_instance->cs_wallet);
     bool first_run = true;
     DBErrors load_wallet_ret = wallet_instance->LoadWallet(first_run);
@@ -58,7 +58,7 @@ static std::shared_ptr<CWallet> LoadWallet(const std::string& name, const fs::pa
     }
 
     // dummy chain interface
-    std::shared_ptr<CWallet> wallet_instance(new CWallet(nullptr /* chain */, WalletLocation(name), CreateWalletDatabase(path)), WalletToolReleaseWallet);
+    std::shared_ptr<CWallet> wallet_instance(new CWallet(nullptr /* chain */, WalletLocation(name), CreateWalletDatabase(path, StorageType::NONE)), WalletToolReleaseWallet);
     DBErrors load_wallet_ret;
     try {
         bool first_run;
@@ -109,7 +109,7 @@ static bool SalvageWallet(const fs::path& path)
 {
     // Create a Database handle to allow for the db to be initialized before recovery
     bilingual_str error_string;
-    std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(path);
+    std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(path, StorageType::BDB);
     if (!database->Verify(error_string)) {
         tfm::format(std::cerr, "Failed to open wallet for salvage :%s\n", error_string.original);
         return false;
@@ -136,7 +136,7 @@ bool ExecuteWalletToolFunc(const std::string& command, const std::string& name)
         }
         bilingual_str error;
         std::vector<bilingual_str> warnings;
-        std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(path);
+        std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(path, StorageType::NONE);
         if (!database->Verify(error)) {
             tfm::format(std::cerr, "%s\nError loading %s. Is wallet being used by other process?\n", error.original, name);
             return false;
