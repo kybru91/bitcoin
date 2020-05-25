@@ -3683,6 +3683,11 @@ bool CWallet::Verify(interfaces::Chain& chain, const WalletLocation& location, b
         return false;
     }
 
+    // Nothing to verify if the location doesn't exist
+    if (!location.Exists()) {
+        return true;
+    }
+
     // Keep same database environment instance across Verify/Recover calls below.
     std::unique_ptr<WalletDatabase> database = CreateWalletDatabase(wallet_path);
     return database->Verify(error_string);
