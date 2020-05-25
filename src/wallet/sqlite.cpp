@@ -8,6 +8,7 @@
 #include <util/translation.h>
 #include <wallet/db.h>
 
+#include <sqlite3.h>
 #include <stdint.h>
 
 bool IsSQLiteWalletLoaded(const fs::path& wallet_path)
@@ -110,4 +111,9 @@ bool SQLiteDatabase::TxnCommit()
 bool SQLiteDatabase::TxnAbort()
 {
     return false;
+}
+
+std::string SQLiteDatabaseVersion()
+{
+    return std::string(sqlite3_libversion());
 }
