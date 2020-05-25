@@ -759,3 +759,8 @@ bool BerkeleyDatabase::DBExists(CDataStream& key) const
     int ret = m_db->exists(m_active_txn, datKey, 0);
     return ret == 0;
 }
+
+std::string BerkeleyDatabase::GetFilePath() const
+{
+    return m_file_path;
+}
