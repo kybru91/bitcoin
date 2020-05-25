@@ -2591,8 +2591,10 @@ static UniValue loadwallet(const JSONRPCRequest& request)
     } else if (fs::is_directory(location.GetPath())) {
         // The given filename is a directory. Check that there's a wallet.dat file.
         fs::path wallet_dat_file = location.GetPath() / "wallet.dat";
-        if (fs::symlink_status(wallet_dat_file).type() == fs::file_not_found) {
-            throw JSONRPCError(RPC_WALLET_NOT_FOUND, "Directory " + location.GetName() + " does not contain a wallet.dat file.");
+        fs::path wallet_sqlite_file = location.GetPath() / "wallet.sqlite";
+        if (fs::symlink_status(wallet_dat_file).type() == fs::file_not_found &&
+            fs::symlink_status(wallet_sqlite_file).type() == fs::file_not_found) {
+            throw JSONRPCError(RPC_WALLET_NOT_FOUND, "Directory " + location.GetName() + " does not contain a wallet.dat or wallet.sqlite file.");
         }
     }
 
