@@ -11,6 +11,13 @@
 #include <sqlite3.h>
 #include <stdint.h>
 #include <sqlite3.h>
+#include <unordered_set>
+
+namespace {
+    RecursiveMutex cs_sqlite;
+    //! Set of wallet file paths in use
+    std::unordered_set<std::string> g_file_paths GUARDED_BY(cs_sqlite);
+} // namespace
 
 bool IsSQLiteWalletLoaded(const fs::path& wallet_path)
 {
