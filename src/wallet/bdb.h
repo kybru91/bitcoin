@@ -273,5 +273,6 @@ public:
 };
 
 std::string BerkeleyDatabaseVersion();
+bool IsBDBFile(const fs::path& path);
 
 #endif // BITCOIN_WALLET_BDB_H

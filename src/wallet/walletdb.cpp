@@ -14,6 +14,7 @@
 #include <util/system.h>
 #include <util/time.h>
 #include <wallet/bdb.h>
+#include <wallet/sqlite.h>
 #include <wallet/wallet.h>
 
 #include <atomic>
@@ -1025,6 +1026,41 @@ bool WalletBatch::TxnAbort()
 bool IsWalletLoaded(const fs::path& wallet_path)
 {
     return IsBDBWalletLoaded(wallet_path);
+}
+
+StorageType DetermineStorageType(const fs::path& path)
+{
+    fs::file_type path_type = fs::symlink_status(path).type();
+
+    // Directory, so typical multiwallet. Search for the expected file names.
+    if (path_type == fs::directory_file || (path_type == fs::symlink_file && fs::is_directory(path))) {
+        fs::file_type dat_type = fs::symlink_status(path / "wallet.dat").type();
+        if (dat_type != fs::file_not_found) {
+            if (!IsBDBFile(path / "wallet.dat")) {
+                throw std::runtime_error(strprintf("Expected %s to be BDB but was not", path / "wallet.dat"));
+            }
+            return StorageType::BDB;
+        }
+        fs::file_type sqlite_type = fs::symlink_status(path / "wallet.sqlite").type();
+        if (sqlite_type != fs::file_not_found) {
+            if (!IsSQLiteFile(path / "wallet.sqlite")) {
+                throw std::runtime_error(strprintf("Expected %s to be SQLite but was not", path / "wallet.sqlite"));
+            }
+            return StorageType::SQLITE;
+        }
+        return StorageType::NONE;
+    }
+
+    // Maybe it's the name of the wallet file itself
+    if (path_type == fs::regular_file) {
+        // Figure out what the db type is based on magic
+        if (IsSQLiteFile(path)) {
+            return StorageType::SQLITE;
+        } else if (IsBDBFile(path)) {
+            return StorageType::BDB;
+        }
+    }
+    return StorageType::NONE;
 }
 
 /** Return object for accessing database at specified path. */
