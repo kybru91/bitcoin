@@ -165,6 +165,8 @@ public:
     virtual bool TxnBegin() = 0;
     virtual bool TxnCommit() = 0;
     virtual bool TxnAbort() = 0;
+
+    virtual StorageType GetStorageType() const = 0;
 };
 
 #endif // BITCOIN_WALLET_DB_H

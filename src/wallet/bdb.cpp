@@ -786,3 +786,8 @@ bool IsBDBFile(const fs::path& path)
     // Check the magic
     return magic == 0x00053162;
 }
+
+StorageType BerkeleyDatabase::GetStorageType() const
+{
+    return StorageType::BDB;
+}
