@@ -35,8 +35,8 @@ enum class StorageType : int
 };
 
 /** Given a wallet directory path or legacy file path, return path to main data file in the wallet database. */
-void SplitWalletPath(const fs::path& wallet_path, fs::path& env_directory, std::string& database_filename);
-fs::path WalletDataFilePath(const fs::path& wallet_path);
+void SplitWalletPath(const fs::path& wallet_path, fs::path& env_directory, std::string& database_filename, StorageType type);
+fs::path WalletDataFilePath(const fs::path& wallet_path, StorageType type);
 
 /** An instance of this class represents one database.
  **/

@@ -21,7 +21,7 @@ namespace {
 
 bool IsSQLiteWalletLoaded(const fs::path& wallet_path)
 {
-    fs::path data_path = WalletDataFilePath(wallet_path);
+    fs::path data_path = WalletDataFilePath(wallet_path, StorageType::SQLITE);
     LOCK(cs_sqlite);
     return g_file_paths.count(data_path.string()) > 0;
 }
