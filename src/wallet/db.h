@@ -27,6 +27,13 @@
 
 struct bilingual_str;
 
+enum class StorageType : int
+{
+    NONE,
+    BDB,
+    SQLITE,
+};
+
 /** Given a wallet directory path or legacy file path, return path to main data file in the wallet database. */
 void SplitWalletPath(const fs::path& wallet_path, fs::path& env_directory, std::string& database_filename);
 fs::path WalletDataFilePath(const fs::path& wallet_path);
