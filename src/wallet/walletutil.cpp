@@ -101,9 +101,29 @@ WalletLocation::WalletLocation(const std::string& name)
 bool WalletLocation::Exists() const
 {
     fs::path path = m_path;
-    // For the default wallet, check specifically for the wallet.dat file
-    if (m_name.empty()) {
-        path = fs::absolute("wallet.dat", m_path);
+
+    fs::file_type path_type = fs::symlink_status(path).type();
+    // Short circuit if it just doesn't exist
+    if (path_type == fs::file_not_found) {
+        return false;
     }
-    return fs::symlink_status(path).type() != fs::file_not_found;
+
+    // If it's a file, it exists (duh)
+    if (path_type == fs::regular_file) {
+        return true;
+    }
+
+    // If it's a directory, check specifically for the wallet.dat or wallet.sqlite files
+    if (path_type == fs::directory_file || (path_type == fs::symlink_file && fs::is_directory(path))) {
+        path = fs::absolute("wallet.dat", m_path);
+        if (fs::symlink_status(path).type() == fs::file_not_found) {
+            // Maybe it's sqlite, so check for that too
+            path = fs::absolute("wallet.sqlite", m_path);
+            return fs::symlink_status(path).type() != fs::file_not_found;
+        } else {
+            return true;
+        }
+    }
+    // Something exists here but we don't know what it is... Just say something exists so an error can be caught later
+    return true;
 }
