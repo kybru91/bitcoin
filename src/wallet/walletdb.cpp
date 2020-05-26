@@ -1064,20 +1064,54 @@ StorageType DetermineStorageType(const fs::path& path)
 }
 
 /** Return object for accessing database at specified path. */
-std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path)
+std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path, StorageType type)
 {
+    StorageType det_type = DetermineStorageType(path);
+    if (type != StorageType::NONE && det_type != StorageType::NONE && det_type != type) {
+        throw std::runtime_error("Expected database type differs from detected type");
+    } else if (det_type == StorageType::NONE && type == StorageType::NONE) {
+        throw std::runtime_error("Unable to determine database type to create");
+    } else if (det_type == StorageType::NONE) {
+        det_type = type; // det_type == NONE means no file found, so use the type specified
+    }
+
+    fs::path dir_path;
     std::string filename;
-    return MakeUnique<BerkeleyDatabase>(GetWalletEnv(path, filename), std::move(filename));
+    SplitWalletPath(path, dir_path, filename, det_type);
+    fs::path file_path = dir_path / filename;
+    switch (det_type) {
+    case StorageType::NONE:
+        assert(false);
+    case StorageType::BDB:
+        return MakeUnique<BerkeleyDatabase>(GetWalletEnv(path, filename), std::move(filename));
+    case StorageType::SQLITE:
+       return MakeUnique<SQLiteDatabase>(dir_path, file_path);
+    }
+    assert(false);
 }
 
 /** Return object for accessing dummy database with no read/write capabilities. */
-std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase()
+std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase(StorageType type)
 {
-    return MakeUnique<BerkeleyDatabase>();
+    switch (type) {
+    case StorageType::NONE:
+    case StorageType::BDB:
+        return MakeUnique<BerkeleyDatabase>();
+    case StorageType::SQLITE:
+        return MakeUnique<SQLiteDatabase>();
+    }
+    assert(false);
 }
 
 /** Return object for accessing temporary in-memory database. */
-std::unique_ptr<WalletDatabase> CreateMockWalletDatabase()
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase(StorageType type)
 {
-    return MakeUnique<BerkeleyDatabase>(std::make_shared<BerkeleyEnvironment>(), "");
+    switch (type) {
+    case StorageType::NONE:
+    case StorageType::BDB:
+        return MakeUnique<BerkeleyDatabase>(std::make_shared<BerkeleyEnvironment>(), "");
+    case StorageType::SQLITE:
+        return MakeUnique<SQLiteDatabase>("", "", true /* mock */);
+    }
+    assert(false);
 }
