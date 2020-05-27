@@ -270,6 +270,8 @@ public:
         m_active_txn = nullptr;
         return (ret == 0);
     }
+
+    StorageType GetStorageType() const override;
 };
 
 std::string BerkeleyDatabaseVersion();

@@ -469,3 +469,8 @@ bool IsSQLiteFile(const fs::path& path)
     std::string magic_str(magic);
     return magic_str == std::string("SQLite format 3");
 }
+
+StorageType SQLiteDatabase::GetStorageType() const
+{
+    return StorageType::SQLITE;
+}

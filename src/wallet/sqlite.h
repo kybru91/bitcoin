@@ -93,6 +93,8 @@ public:
     bool TxnBegin() override;
     bool TxnCommit() override;
     bool TxnAbort() override;
+
+    StorageType GetStorageType() const override;
 };
 
 std::string SQLiteDatabaseVersion();
