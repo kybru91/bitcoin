@@ -97,5 +97,6 @@ public:
 
 std::string SQLiteDatabaseVersion();
 bool IsSQLiteWalletLoaded(const fs::path& wallet_path);
+bool IsSQLiteFile(const fs::path& path);
 
 #endif // BITCOIN_WALLET_SQLITE_H

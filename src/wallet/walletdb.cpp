@@ -14,6 +14,7 @@
 #include <util/system.h>
 #include <util/time.h>
 #include <wallet/bdb.h>
+#include <wallet/sqlite.h>
 #include <wallet/wallet.h>
 
 #include <atomic>
@@ -1025,6 +1026,29 @@ bool WalletBatch::TxnAbort()
 bool IsWalletLoaded(const fs::path& wallet_path)
 {
     return IsBDBWalletLoaded(wallet_path);
+}
+
+StorageType DetermineStorageType(const fs::path& path)
+{
+    fs::path file_path = path;
+    fs::file_type path_type = fs::symlink_status(file_path).type();
+
+    // Directory, so typical multiwallet. The file is wallet.dat.
+    if (path_type == fs::directory_file || (path_type == fs::symlink_file && fs::is_directory(file_path))) {
+        file_path = path / "wallet.dat";
+        path_type = fs::symlink_status(file_path).type();
+    }
+
+    // We have the name of the wallet file itself.
+    if (path_type == fs::regular_file) {
+        // Figure out what the db type is based on magic
+        if (IsSQLiteFile(file_path)) {
+            return StorageType::SQLITE;
+        } else if (IsBDBFile(file_path)) {
+            return StorageType::BDB;
+        }
+    }
+    return StorageType::NONE;
 }
 
 /** Return object for accessing database at specified path. */

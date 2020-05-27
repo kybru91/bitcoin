@@ -764,3 +764,25 @@ std::string BerkeleyDatabase::GetFilePath() const
 {
     return m_file_path;
 }
+
+bool IsBDBFile(const fs::path& path)
+{
+    FILE* f = fsbridge::fopen(path, "rb");
+    CAutoFile file(f, SER_DISK, CLIENT_VERSION);
+    if (file.IsNull()) {
+        file.fclose();
+        throw std::runtime_error(strprintf("Unable to fopen file %s", path.string()));
+    }
+
+    // Skip to magic at byte 12
+    file.ignore(12);
+
+    // Read the magic
+    uint32_t magic;
+    file >> magic;
+    magic = htole32(magic);
+    file.fclose();
+
+    // Check the magic
+    return magic == 0x00053162;
+}

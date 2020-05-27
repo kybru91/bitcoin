@@ -450,3 +450,22 @@ std::string SQLiteDatabase::GetFilePath() const
 {
     return m_file_path;
 }
+
+bool IsSQLiteFile(const fs::path& path)
+{
+    FILE* f = fsbridge::fopen(path, "rb");
+    CAutoFile file(f, SER_DISK, CLIENT_VERSION);
+    if (file.IsNull()) {
+        file.fclose();
+        throw std::runtime_error(strprintf("Unable to fopen file %s", path.string()));
+    }
+
+    // Read the magic. 16 bytes
+    char magic[16];
+    file.read(magic, 16);
+    file.fclose();
+
+    // Check the magic
+    std::string magic_str(magic);
+    return magic_str == std::string("SQLite format 3");
+}
