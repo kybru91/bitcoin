@@ -37,6 +37,10 @@ SQLiteDatabase::SQLiteDatabase(const fs::path& dir_path, const fs::path& file_pa
     LogPrintf("Using SQLite Version %s\n", SQLiteDatabaseVersion());
     LogPrintf("Using wallet %s\n", m_dir_path);
 
+    int ret = sqlite3_initialize();
+    if (ret != SQLITE_OK) {
+        throw std::runtime_error(strprintf("SQLiteDatabase: Failed to initialize SQLite: %s\n", sqlite3_errstr(ret)));
+    }
     LOCK(cs_sqlite);
     assert(g_file_paths.count(m_file_path) == 0);
     g_file_paths.insert(m_file_path);
@@ -47,6 +51,9 @@ SQLiteDatabase::~SQLiteDatabase()
     Close();
     LOCK(cs_sqlite);
     g_file_paths.erase(m_file_path);
+    if (g_file_paths.empty()) {
+        sqlite3_shutdown();
+    }
 }
 
 void SQLiteDatabase::Open(const char* pszMode)
