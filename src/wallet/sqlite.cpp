@@ -327,16 +327,35 @@ bool SQLiteDatabase::DBExists(CDataStream& key) const
 
 bool SQLiteDatabase::CreateCursor()
 {
-    return false;
+    if (!m_db) return false;
+    return true;
 }
 
 bool SQLiteDatabase::ReadAtCursor(CDataStream& key, CDataStream& value, bool& complete)
 {
-    return false;
+    complete = false;
+
+    int res = sqlite3_step(m_cursor_stmt);
+    if (res == SQLITE_DONE) {
+        complete = true;
+        return true;
+    } else if (res != SQLITE_ROW) {
+        return false;
+    }
+
+    // Leftmost column in result is index 0
+    const char* key_data = (const char*)sqlite3_column_blob(m_cursor_stmt, 0);
+    int key_data_size = sqlite3_column_bytes(m_cursor_stmt, 0);
+    key.write(key_data, key_data_size);
+    const char* value_data = (const char*)sqlite3_column_blob(m_cursor_stmt, 1);
+    int value_data_size = sqlite3_column_bytes(m_cursor_stmt, 1);
+    value.write(value_data, value_data_size);
+    return true;
 }
 
 void SQLiteDatabase::CloseCursor()
 {
+    sqlite3_reset(m_cursor_stmt);
 }
 
 bool SQLiteDatabase::TxnBegin()
