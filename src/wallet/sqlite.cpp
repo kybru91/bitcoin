@@ -240,22 +240,89 @@ void SQLiteDatabase::Acquire()
 
 bool SQLiteDatabase::DBRead(CDataStream& key, CDataStream& value) const
 {
-    return false;
+    if (!m_db) return false;
+
+    // Bind: leftmost parameter in statement is index 1
+    int res = sqlite3_bind_blob(m_read_stmt, 1, key.data(), key.size(), SQLITE_STATIC);
+    if (res != SQLITE_OK) {
+        sqlite3_clear_bindings(m_read_stmt);
+        sqlite3_reset(m_read_stmt);
+        return false;
+    }
+    res = sqlite3_step(m_read_stmt);
+    if (res != SQLITE_ROW) {
+        sqlite3_clear_bindings(m_read_stmt);
+        sqlite3_reset(m_read_stmt);
+        return false;
+    }
+    // Leftmost column in result is index 0
+    const char* data = (const char*)sqlite3_column_blob(m_read_stmt, 0);
+    int data_size = sqlite3_column_bytes(m_read_stmt, 0);
+    value.write(data, data_size);
+
+    sqlite3_clear_bindings(m_read_stmt);
+    sqlite3_reset(m_read_stmt);
+    return true;
 }
 
 bool SQLiteDatabase::DBWrite(CDataStream& key, CDataStream& value, bool overwrite) const
 {
-    return false;
+    if (!m_db) return false;
+    if (m_read_only) assert(!"Write called on database in read-only mode");
+
+    sqlite3_stmt* stmt;
+    if (overwrite) {
+        stmt = m_overwrite_stmt;
+    } else {
+        stmt = m_insert_stmt;
+    }
+
+    // Bind: leftmost parameter in statement is index 1
+    // Insert index 1 is key, 2 is value
+    int res = sqlite3_bind_blob(stmt, 1, key.data(), key.size(), SQLITE_STATIC);
+    if (res != SQLITE_OK) {
+        sqlite3_clear_bindings(stmt);
+        sqlite3_reset(stmt);
+        return false;
+    }
+    res = sqlite3_bind_blob(stmt, 2, value.data(), value.size(), SQLITE_STATIC);
+    if (res != SQLITE_OK) {
+        sqlite3_clear_bindings(stmt);
+        sqlite3_reset(stmt);
+        return false;
+    }
+
+    // Execute
+    res = sqlite3_step(stmt);
+    sqlite3_clear_bindings(stmt);
+    sqlite3_reset(stmt);
+    return res == SQLITE_DONE;
 }
 
 bool SQLiteDatabase::DBErase(CDataStream& key) const
 {
-    return false;
+    if (!m_db) return false;
+    if (m_read_only) assert(!"Erase called on database in read-only mode");
+
+    // Bind: leftmost parameter in statement is index 1
+    int res = sqlite3_bind_blob(m_delete_stmt, 1, key.data(), key.size(), SQLITE_STATIC);
+    if (res != SQLITE_OK) {
+        sqlite3_clear_bindings(m_delete_stmt);
+        sqlite3_reset(m_delete_stmt);
+        return false;
+    }
+
+    // Execute
+    res = sqlite3_step(m_delete_stmt);
+    sqlite3_clear_bindings(m_delete_stmt);
+    sqlite3_reset(m_delete_stmt);
+    return res == SQLITE_DONE;
 }
 
 bool SQLiteDatabase::DBExists(CDataStream& key) const
 {
-    return false;
+    CDataStream value(SER_DISK, CLIENT_VERSION);
+    return DBRead(key, value);
 }
 
 bool SQLiteDatabase::CreateCursor()
