@@ -430,7 +430,7 @@ bool CWallet::HasWalletSpend(const uint256& txid) const
 
 void CWallet::Flush(bool shutdown)
 {
-    if (database) {
+    if (database && database->GetStorageType() == StorageType::BDB) {
         database->Close();
         if (shutdown) {
             database.reset();
