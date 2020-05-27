@@ -445,3 +445,8 @@ std::string SQLiteDatabaseVersion()
 {
     return std::string(sqlite3_libversion());
 }
+
+std::string SQLiteDatabase::GetFilePath() const
+{
+    return m_file_path;
+}

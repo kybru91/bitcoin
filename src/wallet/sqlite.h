@@ -59,6 +59,8 @@ public:
     /** Close the database */
     void Close() override;
 
+    std::string GetFilePath() const override;
+
     /** Indicate the a new database user has began using the database. Increments m_refcount */
     void Acquire() override;
     /** Indicate that database user has stopped using the database. Decrement m_refcount */
