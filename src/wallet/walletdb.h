@@ -301,7 +301,7 @@ bool ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue, st
 bool IsWalletLoaded(const fs::path& wallet_path);
 
 /** Return object for accessing database at specified path. */
-std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path, StorageType type = StorageType::BDB);
+std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path, StorageType type);
 
 /** Return object for accessing dummy database with no read/write capabilities. */
 std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase(StorageType type = StorageType::BDB);

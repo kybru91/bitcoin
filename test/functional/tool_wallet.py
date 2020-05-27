@@ -70,9 +70,11 @@ class ToolWalletTest(BitcoinTestFramework):
         self.assert_raises_tool_error('Invalid command: help', 'help')
         self.assert_raises_tool_error('Error: two methods provided (info and create). Only one method should be provided.', 'info', 'create')
         self.assert_raises_tool_error('Error parsing command line arguments: Invalid parameter -foo', '-foo')
+        errmsg = 'Error loading wallet.dat. Is wallet being used by other process?'
+        if not self.options.descriptors:
+            errmsg = 'Error initializing wallet database environment "{}"!\n'.format(os.path.join(self.nodes[0].datadir, self.chain, 'wallets')) + errmsg
         self.assert_raises_tool_error(
-            'Error initializing wallet database environment "{}"!\nError loading wallet.dat. Is wallet being used by other process?'
-            .format(os.path.join(self.nodes[0].datadir, self.chain, 'wallets')),
+            errmsg,
             '-wallet=wallet.dat',
             'info',
         )
