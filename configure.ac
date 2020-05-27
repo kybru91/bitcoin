@@ -1140,7 +1140,10 @@ if test x$enable_wallet != xno; then
     BITCOIN_FIND_BDB48
 
     dnl Check for sqlite3
-    AC_CHECK_HEADERS([sqlite3.h], [AC_CHECK_LIB([sqlite3], [sqlite3_open], [SQLITE_LIBS=-lsqlite3], [have_sqlite=no])], [have_sqlite=no])
+    dnl AC_CHECK_HEADERS([sqlite3.h], [AC_CHECK_LIB([sqlite3], [sqlite3_open], [SQLITE_LIBS=-lsqlite3], [have_sqlite=no])], [have_sqlite=no])
+
+    SQLITE_CFLAGS="-DSQLITE_DQS=0 -DSQLITE_THREADSAFE=2 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_OMIT_SHARED_CACHE -DSQLITE_OMIT_DEPRECATED"
+    SQLITE_LIBS="-ldl -lpthread"
 fi
 
 dnl Check for libminiupnpc (optional)
@@ -1667,6 +1670,7 @@ AC_SUBST(USE_UPNP)
 AC_SUBST(USE_QRCODE)
 AC_SUBST(BOOST_LIBS)
 AC_SUBST(SQLITE_LIBS)
+AC_SUBST(SQLITE_CFLAGS)
 AC_SUBST(TESTDEFS)
 AC_SUBST(MINIUPNPC_CPPFLAGS)
 AC_SUBST(MINIUPNPC_LIBS)
