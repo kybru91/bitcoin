@@ -192,7 +192,7 @@ bool SQLiteDatabase::Rewrite(const char* skip)
 
 bool SQLiteDatabase::PeriodicFlush()
 {
-    return false;
+    return true;
 }
 
 bool SQLiteDatabase::Backup(const std::string& dest) const
@@ -241,13 +241,9 @@ void SQLiteDatabase::Close()
     UnlockDirectory(m_dir_path, ".walletlock");
 }
 
-void SQLiteDatabase::Flush()
-{
-}
+void SQLiteDatabase::Flush() {}
 
-void SQLiteDatabase::ReloadDbEnv()
-{
-}
+void SQLiteDatabase::ReloadDbEnv() {}
 
 void SQLiteDatabase::Release()
 {
