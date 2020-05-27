@@ -301,12 +301,12 @@ bool ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue, st
 bool IsWalletLoaded(const fs::path& wallet_path);
 
 /** Return object for accessing database at specified path. */
-std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path);
+std::unique_ptr<WalletDatabase> CreateWalletDatabase(const fs::path& path, StorageType type = StorageType::BDB);
 
 /** Return object for accessing dummy database with no read/write capabilities. */
-std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase();
+std::unique_ptr<WalletDatabase> CreateDummyWalletDatabase(StorageType type = StorageType::BDB);
 
 /** Return object for accessing temporary in-memory database. */
-std::unique_ptr<WalletDatabase> CreateMockWalletDatabase();
+std::unique_ptr<WalletDatabase> CreateMockWalletDatabase(StorageType type = StorageType::BDB);
 
 #endif // BITCOIN_WALLET_WALLETDB_H
