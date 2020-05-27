@@ -30,7 +30,44 @@ bool SQLiteDatabase::Verify(bilingual_str& error)
 {
     if (!PrepareDirectory()) return false;
 
-    return false;
+    sqlite3* db = nullptr;
+    int ret = sqlite3_open_v2(m_file_path.c_str(), &db, SQLITE_OPEN_READONLY, nullptr);
+    if (ret == SQLITE_NOTFOUND) {
+        return true; // Return true if the file doesn't exist
+    } else if (ret != SQLITE_OK) {
+        sqlite3_close(db);
+        error = strprintf(_("SQLiteDatabase: Failed to verify database: %s"), sqlite3_errstr(ret));
+        return false;
+    }
+
+    sqlite3_stmt* stmt;
+    ret = sqlite3_prepare_v2(db, "PRAGMA integrity_check", -1, &stmt, nullptr);
+    if (ret != SQLITE_OK) {
+        sqlite3_close(db);
+        error = strprintf(_("SQLiteDatabase: Failed to verify database: %s"), sqlite3_errstr(ret));
+        return false;
+    }
+    while (true) {
+        ret = sqlite3_step(stmt);
+        if (ret == SQLITE_DONE) {
+            break;
+        } else if (ret != SQLITE_ROW) {
+            error = strprintf(_("SQLiteDatabase: Failed to verify database: %s"), sqlite3_errstr(ret));
+            break;
+        }
+        const char* msg = (const char*)sqlite3_column_text(stmt, 0);
+        if (!msg) {
+            error = strprintf(_("SQLiteDatabase: Failed to verify database: %s"), sqlite3_errstr(ret));
+            break;
+        }
+        std::string str_msg(msg);
+        if (str_msg == "ok") {
+            continue;
+        }
+        error += Untranslated("\n" + str_msg);
+    }
+    sqlite3_close(db);
+    return error.original.empty();
 }
 
 static void ErrorLogCallback(void* arg, int code, const char* msg)
