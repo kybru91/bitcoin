@@ -30,6 +30,8 @@ private:
     bool DBErase(CDataStream& key) const override;
     bool DBExists(CDataStream& key) const override;
 
+    bool PrepareDirectory() const;
+
 public:
     /** Create dummy DB handle */
     SQLiteDatabase() : WalletDatabase(), m_dummy(true), m_db(nullptr)
