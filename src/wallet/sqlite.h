@@ -7,6 +7,8 @@
 
 #include <wallet/db.h>
 
+#include <sqlite3.h>
+
 struct bilingual_str;
 
 /** An instance of this class represents one SQLite3 database.
@@ -15,8 +17,13 @@ class SQLiteDatabase : public WalletDatabase
 {
 private:
     bool m_read_only = false;
+    bool m_dummy = false;
+    bool m_mock = false;
+
+    sqlite3* m_db;
 
     const std::string m_file_path;
+    const std::string m_dir_path;
 
     bool DBRead(CDataStream& key, CDataStream& value) const override;
     bool DBWrite(CDataStream& key, CDataStream& value, bool overwrite=true) const override;
@@ -25,15 +32,12 @@ private:
 
 public:
     /** Create dummy DB handle */
-    SQLiteDatabase() : WalletDatabase()
+    SQLiteDatabase() : WalletDatabase(), m_dummy(true), m_db(nullptr)
     {
     }
 
     /** Create DB handle to real database */
-    SQLiteDatabase(std::string filename) :
-        WalletDatabase(), m_file_path(std::move(filename))
-    {
-    }
+    SQLiteDatabase(const fs::path& dir_path, const fs::path& file_path, bool mock=false);
 
     ~SQLiteDatabase();
 

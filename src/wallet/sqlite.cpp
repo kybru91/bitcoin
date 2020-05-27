@@ -10,6 +10,7 @@
 
 #include <sqlite3.h>
 #include <stdint.h>
+#include <sqlite3.h>
 
 bool IsSQLiteWalletLoaded(const fs::path& wallet_path)
 {
@@ -21,8 +22,16 @@ bool SQLiteDatabase::Verify(bilingual_str& error)
     return false;
 }
 
+SQLiteDatabase::SQLiteDatabase(const fs::path& dir_path, const fs::path& file_path, bool mock) :
+    WalletDatabase(), m_mock(mock), m_db(nullptr), m_file_path(file_path.string()), m_dir_path(dir_path.string())
+{
+    LogPrintf("Using SQLite Version %s\n", SQLiteDatabaseVersion());
+    LogPrintf("Using wallet %s\n", m_dir_path);
+}
+
 SQLiteDatabase::~SQLiteDatabase()
 {
+    Close();
 }
 
 void SQLiteDatabase::Open(const char* pszMode)
