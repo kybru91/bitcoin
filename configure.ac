@@ -1175,6 +1175,9 @@ fi
 if test x$enable_wallet != xno; then
     dnl Check for libdb_cxx only if wallet enabled
     BITCOIN_FIND_BDB48
+
+    dnl Check for sqlite3
+    PKG_CHECK_MODULES([SQLITE], [sqlite3], ,[AC_MSG_ERROR([sqlite3 not found.])])
 fi
 
 dnl Check for libminiupnpc (optional)
@@ -1592,6 +1595,7 @@ AC_SUBST(LIBTOOL_APP_LDFLAGS)
 AC_SUBST(USE_UPNP)
 AC_SUBST(USE_QRCODE)
 AC_SUBST(BOOST_LIBS)
+AC_SUBST(SQLITE_LIBS)
 AC_SUBST(TESTDEFS)
 AC_SUBST(MINIUPNPC_CPPFLAGS)
 AC_SUBST(MINIUPNPC_LIBS)
