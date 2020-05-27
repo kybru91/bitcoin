@@ -381,17 +381,20 @@ void SQLiteDatabase::CloseCursor()
 
 bool SQLiteDatabase::TxnBegin()
 {
-    return false;
+    int res = sqlite3_exec(m_db, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+    return res == SQLITE_OK;
 }
 
 bool SQLiteDatabase::TxnCommit()
 {
-    return false;
+    int res = sqlite3_exec(m_db, "COMMIT TRANSACTION", nullptr, nullptr, nullptr);
+    return res == SQLITE_OK;
 }
 
 bool SQLiteDatabase::TxnAbort()
 {
-    return false;
+    int res = sqlite3_exec(m_db, "ROLLBACK TRANSACTION", nullptr, nullptr, nullptr);
+    return res == SQLITE_OK;
 }
 
 std::string SQLiteDatabaseVersion()
