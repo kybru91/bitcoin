@@ -34,6 +34,14 @@ private:
 
     bool PrepareDirectory() const;
 
+    sqlite3_stmt* m_read_stmt = nullptr;
+    sqlite3_stmt* m_insert_stmt = nullptr;
+    sqlite3_stmt* m_overwrite_stmt = nullptr;
+    sqlite3_stmt* m_delete_stmt = nullptr;
+    sqlite3_stmt* m_cursor_stmt = nullptr;
+
+    void SetupSQLStatements();
+
 public:
     /** Create dummy DB handle */
     SQLiteDatabase() : WalletDatabase(), m_dummy(true), m_db(nullptr)
