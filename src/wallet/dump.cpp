@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <fs.h>
 #include <wallet/dump.h>
 
 #include <util/translation.h>
@@ -26,7 +27,7 @@ bool DumpWallet(CWallet& wallet, bilingual_str& error)
         return false;
     }
     fsbridge::ofstream dump_file;
-    dump_file.open(path);
+    dump_file.open(path.c_str());
     if (dump_file.fail()) {
         error = strprintf(_("Unable to open %s for writing"), fs::PathToString(path));
         return false;
@@ -120,7 +121,7 @@ bool CreateFromDump(const std::string& name, const fs::path& wallet_path, biling
         error = strprintf(_("Dump file %s does not exist."), fs::PathToString(dump_path));
         return false;
     }
-    fsbridge::ifstream dump_file(dump_path);
+    fsbridge::ifstream dump_file{dump_path.c_str()};
 
     // Compute the checksum
     CHashWriter hasher(0, 0);

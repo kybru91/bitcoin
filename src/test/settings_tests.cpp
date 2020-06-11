@@ -4,6 +4,7 @@
 
 #include <util/settings.h>
 
+#include <fs.h>
 #include <test/util/setup_common.h>
 #include <test/util/str.h>
 
@@ -37,7 +38,7 @@ inline std::ostream& operator<<(std::ostream& os, const std::pair<std::string, u
 inline void WriteText(const fs::path& path, const std::string& text)
 {
     fsbridge::ofstream file;
-    file.open(path);
+    file.open(path.c_str());
     file << text;
 }
 

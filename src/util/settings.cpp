@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <fs.h>
 #include <util/settings.h>
 
 #include <tinyformat.h>
@@ -64,7 +65,7 @@ bool ReadSettings(const fs::path& path, std::map<std::string, SettingsValue>& va
     if (!fs::exists(path)) return true;
 
     fsbridge::ifstream file;
-    file.open(path);
+    file.open(path.c_str());
     if (!file.is_open()) {
       errors.emplace_back(strprintf("%s. Please check permissions.", fs::PathToString(path)));
       return false;
@@ -107,7 +108,7 @@ bool WriteSettings(const fs::path& path,
         out.__pushKV(value.first, value.second);
     }
     fsbridge::ofstream file;
-    file.open(path);
+    file.open(path.c_str());
     if (file.fail()) {
         errors.emplace_back(strprintf("Error: Unable to open settings file %s for writing", fs::PathToString(path)));
         return false;

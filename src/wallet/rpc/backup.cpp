@@ -5,6 +5,7 @@
 #include <chain.h>
 #include <clientversion.h>
 #include <core_io.h>
+#include <fs.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
 #include <merkleblock.h>
@@ -521,7 +522,7 @@ RPCHelpMan importwallet()
         EnsureWalletIsUnlocked(*pwallet);
 
         fsbridge::ifstream file;
-        file.open(fs::u8path(request.params[0].get_str()), std::ios::in | std::ios::ate);
+        file.open(fs::u8path(request.params[0].get_str().c_str()), std::ios::in | std::ios::ate);
         if (!file.is_open()) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot open wallet dump file");
         }
@@ -729,7 +730,7 @@ RPCHelpMan dumpwallet()
     }
 
     fsbridge::ofstream file;
-    file.open(filepath);
+    file.open(filepath.c_str());
     if (!file.is_open())
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot open wallet dump file");
 

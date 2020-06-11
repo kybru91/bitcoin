@@ -923,7 +923,7 @@ BOOST_AUTO_TEST_CASE(script_build)
     }
 
 #ifdef UPDATE_JSON_TESTS
-    FILE* file = fopen("script_tests.json.gen", "w");
+    FILE* file = fsbridge::fopen("script_tests.json.gen", "w");
     fputs(strGen.c_str(), file);
     fclose(file);
 #endif
@@ -1727,7 +1727,7 @@ BOOST_AUTO_TEST_CASE(script_assets_test)
     bool exists = fs::exists(path);
     BOOST_WARN_MESSAGE(exists, "File $DIR_UNIT_TEST_DATA/script_assets_test.json not found, skipping script_assets_test");
     if (!exists) return;
-    fs::ifstream file(path);
+    fsbridge::ifstream file{path};
     BOOST_CHECK(file.is_open());
     file.seekg(0, std::ios::end);
     size_t length = file.tellg();

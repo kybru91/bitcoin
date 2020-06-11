@@ -25,7 +25,7 @@ BOOST_AUTO_TEST_CASE(getwalletenv_file)
     std::string test_name = "test_name.dat";
     const fs::path datadir = gArgs.GetDataDirNet();
     fs::path file_path = datadir / test_name;
-    fs::ofstream f(file_path);
+    fsbridge::ofstream f{file_path.c_str()};
     f.close();
 
     std::string filename;

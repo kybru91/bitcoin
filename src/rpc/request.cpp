@@ -85,7 +85,7 @@ bool GenerateAuthCookie(std::string *cookie_out)
      */
     fsbridge::ofstream file;
     fs::path filepath_tmp = GetAuthCookieFile(true);
-    file.open(filepath_tmp);
+    file.open(filepath_tmp.c_str());
     if (!file.is_open()) {
         LogPrintf("Unable to open cookie authentication file %s for writing\n", fs::PathToString(filepath_tmp));
         return false;
@@ -110,7 +110,7 @@ bool GetAuthCookie(std::string *cookie_out)
     fsbridge::ifstream file;
     std::string cookie;
     fs::path filepath = GetAuthCookieFile();
-    file.open(filepath);
+    file.open(filepath.c_str());
     if (!file.is_open())
         return false;
     std::getline(file, cookie);
