@@ -3324,7 +3324,7 @@ ScriptPubKeyMan* CWallet::AddWalletDescriptor(WalletDescriptor& desc, const Flat
         }
 
         CTxDestination dest;
-        if (!internal && ExtractDestination(script_pub_keys.at(0), dest)) {
+        if (!internal && ExtractDestination(*script_pub_keys.begin(), dest)) {
             SetAddressBook(dest, label, "receive");
         }
     }
