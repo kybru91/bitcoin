@@ -118,6 +118,10 @@ public:
     {
         return seed_id == chain.seed_id;
     }
+    bool operator<(const CHDChain& chain) const
+    {
+        return seed_id < chain.seed_id;
+    }
 };
 
 class CKeyMetadata
