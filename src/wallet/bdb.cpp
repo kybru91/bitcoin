@@ -849,4 +849,12 @@ std::unique_ptr<BerkeleyDatabase> MakeBerkeleyDatabase(const fs::path& path, con
     status = DatabaseStatus::SUCCESS;
     return db;
 }
+
+uint160 BerkeleyDatabase::MakeNewWalletID() const
+{
+    uint160 id;
+    assert(id.size() == sizeof(env->m_fileids[strFile].value));
+    memcpy(id.data(), env->m_fileids[strFile].value, id.size());
+    return id;
+}
 } // namespace wallet
