@@ -95,6 +95,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.test_address_reuse()
         self.test_option_subtract_fee_from_outputs()
         self.test_subtract_fee_with_presets()
+        self.test_subtract_fee_with_bdb()
 
     def test_change_position(self):
         """Ensure setting changePosition in fundraw with an exact match is handled properly."""
@@ -873,6 +874,26 @@ class RawTransactionsTest(BitcoinTestFramework):
         fundedtx = self.nodes[0].fundrawtransaction(rawtx, {'subtractFeeFromOutputs': [0]})
         signedtx = self.nodes[0].signrawtransactionwithwallet(fundedtx['hex'])
         self.nodes[0].sendrawtransaction(signedtx['hex'])
+
+    def test_subtract_fee_with_bdb(self):
+        self.log.info("Test fundrawtxn subtract fee from outputs when BnB is used")
+
+        self.nodes[0].sendtoaddress(self.nodes[3].getnewaddress(), 10)
+        self.nodes[0].generate(6)
+
+        # There should be 2 UTXOs on node 3, one from an earlier test, and the one we just added
+        assert_equal(len(self.nodes[3].listunspent(0)), 2)
+
+        # Try to fund a transaction with exactly the balance of node 3. This should use BnB.
+        bal = self.nodes[3].getbalance()
+        rawtx = self.nodes[3].createrawtransaction([], [{self.nodes[0].getnewaddress(): self.nodes[3].getbalance()}])
+        fundedtx = self.nodes[3].fundrawtransaction(rawtx, {"subtractFeeFromOutputs": [0]})
+        assert_equal(fundedtx["changepos"], -1)
+        signedtx = self.nodes[3].signrawtransactionwithwallet(fundedtx["hex"])
+        assert_equal(signedtx["complete"], True)
+        decodedtx = self.nodes[3].decoderawtransaction(signedtx["hex"])
+        assert_equal(bal, decodedtx["vout"][0]["value"] + fundedtx["fee"])
+        self.nodes[0].sendrawtransaction(signedtx["hex"])
 
 if __name__ == '__main__':
     RawTransactionsTest().main()
