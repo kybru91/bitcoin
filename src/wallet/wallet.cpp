@@ -2770,6 +2770,11 @@ bool CWallet::CreateTransactionInternal(
 {
     LOCK(cs_wallet);
 
+    if (vecSend.empty()) {
+        error = _("Transaction must have at least one recipient");
+        return false;
+    }
+
     CAmount recipients_sum = 0; // The sum of amounts intended for outgoing recipients (does not include change)
     unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend)
@@ -2783,11 +2788,6 @@ bool CWallet::CreateTransactionInternal(
 
         if (recipient.fSubtractFeeFromAmount)
             outputs_to_subtract_fee_from++;
-    }
-    if (vecSend.empty())
-    {
-        error = _("Transaction must have at least one recipient");
-        return false;
     }
 
     CMutableTransaction txNew;
