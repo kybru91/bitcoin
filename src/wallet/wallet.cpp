@@ -2771,8 +2771,6 @@ bool CWallet::CreateTransactionInternal(
     LOCK(cs_wallet);
 
     CAmount nValue = 0;
-    const OutputType change_type = TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : m_default_change_type, vecSend);
-    ReserveDestination reservedest(this, change_type);
     unsigned int nSubtractFeeFromAmount = 0;
     for (const auto& recipient : vecSend)
     {
@@ -2802,15 +2800,20 @@ bool CWallet::CreateTransactionInternal(
     CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
     coin_selection_params.m_avoid_partial_spends = coin_control.m_avoid_partial_spends;
 
+    // Prepare a ReserveDestination for a newly generated change address
+    const OutputType change_type = TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : m_default_change_type, vecSend);
+    ReserveDestination reservedest(this, change_type);
+
     // Create change script that will be used if we need change
     // TODO: pass in scriptChange instead of reservedest so
     // change transaction isn't always pay-to-bitcoin-address
     CScript scriptChange;
 
-    // coin control: send change to custom address
     if (!boost::get<CNoDestination>(&coin_control.destChange)) {
+        // coin control: send change to custom address
         scriptChange = GetScriptForDestination(coin_control.destChange);
-    } else { // no coin control: send change to newly generated address
+    } else {
+        // no coin control: send change to newly generated address
         // Note: We use a new key here to keep it from being obvious which side is the change.
         //  The drawback is that by not reusing a previous key, the change may be lost if a
         //  backup is restored, if the backup doesn't have the new private key for the change.
