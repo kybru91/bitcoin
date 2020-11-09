@@ -2770,16 +2770,16 @@ bool CWallet::CreateTransactionInternal(
 {
     LOCK(cs_wallet);
 
-    CAmount nValue = 0;
+    CAmount recipients_sum = 0; // The sum of amounts intended for outgoing recipients (does not include change)
     unsigned int nSubtractFeeFromAmount = 0;
     for (const auto& recipient : vecSend)
     {
-        if (nValue < 0 || recipient.nAmount < 0)
+        if (recipients_sum < 0 || recipient.nAmount < 0)
         {
             error = _("Transaction amounts must not be negative");
             return false;
         }
-        nValue += recipient.nAmount;
+        recipients_sum += recipient.nAmount;
 
         if (recipient.fSubtractFeeFromAmount)
             nSubtractFeeFromAmount++;
@@ -2888,7 +2888,7 @@ bool CWallet::CreateTransactionInternal(
     // Calculate the fees for things that aren't inputs
     CAmount not_input_fees = coin_selection_params.effective_fee.GetFee(coin_selection_params.tx_noinputs_size);
 
-    if (!SelectCoins(vAvailableCoins, nValue + not_input_fees, coin_control, coin_selection_params, selection))
+    if (!SelectCoins(vAvailableCoins, recipients_sum + not_input_fees, coin_control, coin_selection_params, selection))
     {
         error = _("Insufficient funds");
         return false;
@@ -2899,7 +2899,7 @@ bool CWallet::CreateTransactionInternal(
         selected_eff += coin.effective_value;
     }
 
-    const CAmount nChange = selection.GetSelectedValue() - nValue;
+    const CAmount nChange = selection.GetSelectedValue() - recipients_sum;
     if (nChange > 0)
     {
         // Fill a vout to ourself
@@ -2911,7 +2911,7 @@ bool CWallet::CreateTransactionInternal(
         // add the dust to the fee.
         // When the selected_eff is within the exact match range
         // (nValue + not_input_fees + cost_of_change), don't make change.
-        if (IsDust(newTxOut, discard_rate) || selected_eff <= nValue + not_input_fees + cost_of_change)
+        if (IsDust(newTxOut, discard_rate) || selected_eff <= recipients_sum + not_input_fees + cost_of_change)
         {
             nChangePosInOut = -1;
             assert(nFeeRet == 0);
