@@ -2899,11 +2899,10 @@ bool CWallet::CreateTransactionInternal(
         selected_eff += coin.effective_value;
     }
 
-    const CAmount nChange = selection.GetSelectedValue() - recipients_sum;
-    if (nChange > 0)
-    {
+    const CAmount remainder = selection.GetSelectedValue() - recipients_sum;
+    if (remainder > 0) {
         // Fill a vout to ourself
-        CTxOut newTxOut(nChange, scriptChange);
+        CTxOut newTxOut(remainder, scriptChange);
 
         CAmount cost_of_change = GetDiscardRate(*this).GetFee(coin_selection_params.change_spend_size) + coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
 
@@ -2911,21 +2910,15 @@ bool CWallet::CreateTransactionInternal(
         // add the dust to the fee.
         // When the selected_eff is within the exact match range
         // (nValue + not_input_fees + cost_of_change), don't make change.
-        if (IsDust(newTxOut, discard_rate) || selected_eff <= recipients_sum + not_input_fees + cost_of_change)
-        {
+        if (IsDust(newTxOut, discard_rate) || selected_eff <= recipients_sum + not_input_fees + cost_of_change) {
             nChangePosInOut = -1;
             assert(nFeeRet == 0);
-            nFeeRet = nChange;
-        }
-        else
-        {
-            if (nChangePosInOut == -1)
-            {
+            nFeeRet = remainder;
+        } else {
+            if (nChangePosInOut == -1) {
                 // Insert change txn at random position:
                 nChangePosInOut = GetRandInt(txNew.vout.size()+1);
-            }
-            else if ((unsigned int)nChangePosInOut > txNew.vout.size())
-            {
+            } else if ((unsigned int)nChangePosInOut > txNew.vout.size()) {
                 error = _("Change index out of range");
                 return false;
             }
