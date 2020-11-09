@@ -2771,7 +2771,7 @@ bool CWallet::CreateTransactionInternal(
     LOCK(cs_wallet);
 
     CAmount recipients_sum = 0; // The sum of amounts intended for outgoing recipients (does not include change)
-    unsigned int nSubtractFeeFromAmount = 0;
+    unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend)
     {
         if (recipients_sum < 0 || recipient.nAmount < 0)
@@ -2782,7 +2782,7 @@ bool CWallet::CreateTransactionInternal(
         recipients_sum += recipient.nAmount;
 
         if (recipient.fSubtractFeeFromAmount)
-            nSubtractFeeFromAmount++;
+            outputs_to_subtract_fee_from++;
     }
     if (vecSend.empty())
     {
@@ -2849,7 +2849,7 @@ bool CWallet::CreateTransactionInternal(
 
     nFeeRet = 0;
 
-    coin_selection_params.m_subtract_fee_outputs = nSubtractFeeFromAmount != 0; // If we are doing subtract fee from recipient, don't use effective values
+    coin_selection_params.m_subtract_fee_outputs = outputs_to_subtract_fee_from != 0; // If we are doing subtract fee from recipient, don't use effective values
 
     txNew.vin.clear();
     txNew.vout.clear();
@@ -2958,7 +2958,7 @@ bool CWallet::CreateTransactionInternal(
     if (nFeeRet < fee_needed) {
         nFeeRet = fee_needed;
         // Try to reduce change to include necessary fee
-        if (nChangePosInOut != -1 && nSubtractFeeFromAmount == 0) {
+        if (nChangePosInOut != -1 && outputs_to_subtract_fee_from == 0) {
             std::vector<CTxOut>::iterator change_position = txNew.vout.begin()+nChangePosInOut;
             change_position->nValue -= nFeeRet;
             // If the change is now dust, get rid of it
@@ -2970,7 +2970,7 @@ bool CWallet::CreateTransactionInternal(
             }
         }
         // Reduce output values for subtractFeeFromAmount
-        else if (nSubtractFeeFromAmount != 0) {
+        else if (outputs_to_subtract_fee_from != 0) {
             int i = 0;
             bool fFirst = true;
             for (const auto& recipient : vecSend)
@@ -2982,12 +2982,12 @@ bool CWallet::CreateTransactionInternal(
 
                 if (recipient.fSubtractFeeFromAmount)
                 {
-                    txout.nValue -= nFeeRet / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
+                    txout.nValue -= nFeeRet / outputs_to_subtract_fee_from; // Subtract fee equally from each selected recipient
 
                     if (fFirst) // first receiver pays the remainder not divisible by output count
                     {
                         fFirst = false;
-                        txout.nValue -= nFeeRet % nSubtractFeeFromAmount;
+                        txout.nValue -= nFeeRet % outputs_to_subtract_fee_from;
                     }
 
                     // Error if this output is reduced to be below dust
