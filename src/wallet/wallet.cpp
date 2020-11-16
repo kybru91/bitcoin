@@ -2415,7 +2415,8 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
 
     std::set<CInputCoin> knapsack_coins;
     CAmount knapsack_value;
-    bool knapsack_ret = KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_coins, knapsack_value);
+    SelectionResult knapsack_result;
+    bool knapsack_ret = KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_coins, knapsack_value, knapsack_result);
     CAmount knapsack_fees = 0;
     for (const auto& coin : knapsack_coins) {
         knapsack_fees += coin.m_fee;
