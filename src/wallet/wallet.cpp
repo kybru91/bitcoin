@@ -2417,10 +2417,6 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     CAmount knapsack_value;
     SelectionResult knapsack_result;
     bool knapsack_ret = KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_coins, knapsack_value, knapsack_result);
-    CAmount knapsack_fees = 0;
-    for (const auto& coin : knapsack_coins) {
-        knapsack_fees += coin.m_fee;
-    }
 
     std::set<CInputCoin> srd_coins;
     CAmount srd_value;
@@ -2431,12 +2427,12 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     }
 
     if (knapsack_ret) {
-        setCoinsRet = knapsack_coins;
-        nValueRet = knapsack_value;
+        setCoinsRet = knapsack_result.selected_inputs;
+        nValueRet = knapsack_result.GetSelectedValue();
     }
     if (srd_ret) {
         // Use SRD if knapsack has no solution, SRD has lower fees, or SRD has more inputs for same fees
-        if (!knapsack_ret || srd_fees < knapsack_fees || (srd_fees == knapsack_fees && srd_coins.size() > knapsack_coins.size())) {
+        if (!knapsack_ret || srd_fees < knapsack_result.input_fees || (srd_fees == knapsack_result.input_fees && srd_coins.size() > knapsack_result.selected_inputs.size())) {
             setCoinsRet = srd_coins;
             nValueRet = srd_value;
         }
