@@ -2432,7 +2432,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     return false;
 }
 
-bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params, SelectionResult& result) const
+bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params, SelectionResult& result) const
 {
     result.Clear();
 
@@ -2456,8 +2456,6 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
             preset_inputs.Insert(out.GetInputCoin(), 0, false, 0, 0, false);
         }
         result.AddInput(preset_inputs);
-        setCoinsRet = result.selected_inputs;
-        nValueRet = result.GetSelectedValue();
         return (result.GetSelectedValue() >= nTargetValue);
     }
 
@@ -2576,15 +2574,8 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
         return false;
     }();
 
-    // SelectCoinsMinConf clears setCoinsRet, so add the preset inputs from coin_control to the coinset
-    util::insert(setCoinsRet, setPresetCoins);
+    // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
     result.AddInput(preset_inputs);
-
-    // add preset inputs to the total value selected
-    nValueRet += nValueFromPresetInputs;
-
-    setCoinsRet = result.selected_inputs;
-    nValueRet = result.GetSelectedValue();
 
     return res;
 }
@@ -2861,7 +2852,6 @@ bool CWallet::CreateTransactionInternal(
     std::pair<int64_t, int64_t> tx_sizes;
     int nBytes;
     {
-        std::set<CInputCoin> setCoins;
         SelectionResult selection;
         LOCK(cs_wallet);
         txNew.nLockTime = GetLocktimeForNewTransaction(chain(), GetLastBlockHash(), GetLastBlockHeight());
@@ -2970,9 +2960,7 @@ bool CWallet::CreateTransactionInternal(
             CAmount nValueToSelect = nValue + not_input_fees;
 
             // Choose coins to use
-            CAmount inputs_sum = 0;
-            setCoins.clear();
-            if (!SelectCoins(vAvailableCoins, /* nTargetValue */ nValueToSelect, setCoins, inputs_sum, coin_control, coin_selection_params, selection))
+            if (!SelectCoins(vAvailableCoins, /* nTargetValue */ nValueToSelect, coin_control, coin_selection_params, selection))
             {
                 error = _("Insufficient funds");
                 return false;
