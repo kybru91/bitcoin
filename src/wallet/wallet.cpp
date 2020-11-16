@@ -2418,7 +2418,8 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
 
     std::set<CInputCoin> srd_coins;
     CAmount srd_value;
-    bool srd_ret = SelectCoinsSRD(positive_groups, nTargetValue + coin_selection_params.m_change_fee + MIN_FINAL_CHANGE, srd_coins, srd_value);
+    SelectionResult srd_result;
+    bool srd_ret = SelectCoinsSRD(positive_groups, nTargetValue + coin_selection_params.m_change_fee + MIN_FINAL_CHANGE, srd_coins, srd_value, srd_result);
     CAmount srd_fees = 0;
     for (const auto& coin : srd_coins) {
         srd_fees += coin.m_fee;
