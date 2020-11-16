@@ -2459,6 +2459,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     // calculate value from preset inputs and store them
     std::set<CInputCoin> setPresetCoins;
     CAmount nValueFromPresetInputs = 0;
+    OutputGroup preset_inputs(coin_selection_params);
 
     std::vector<COutPoint> vPresetInputs;
     coin_control.ListSelected(vPresetInputs);
@@ -2485,6 +2486,10 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
                 value_to_select -= coin.effective_value;
             }
             setPresetCoins.insert(coin);
+            /* depth, from_me, ancestors, and descendants don't matter for preset inputs as no actual selection is being done. So set them to default 0 or false.
+             * positive_only is set to false because we want to include all preset inputs, even if they are dust.
+             */
+            preset_inputs.Insert(coin, 0, false, 0, 0, false);
         } else {
             return false; // TODO: Allow non-wallet inputs
         }
