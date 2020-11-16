@@ -232,11 +232,9 @@ static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const 
     }
 }
 
-bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, std::set<CInputCoin>& setCoinsRet, CAmount& nValueRet, SelectionResult& result)
+bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, SelectionResult& result)
 {
-    setCoinsRet.clear();
     result.Clear();
-    nValueRet = 0;
 
     // List of values less than target
     std::optional<OutputGroup> lowest_larger;
@@ -248,8 +246,6 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& group
     for (const OutputGroup& group : groups) {
         if (group.GetSelectionAmount() == nTargetValue) {
             result.AddInput(group);
-            util::insert(setCoinsRet, group.m_outputs);
-            nValueRet += group.m_value;
             return true;
         } else if (group.GetSelectionAmount() < nTargetValue + MIN_CHANGE) {
             applicable_groups.push_back(group);
@@ -262,8 +258,6 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& group
     if (nTotalLower == nTargetValue) {
         for (const auto& group : applicable_groups) {
             result.AddInput(group);
-            util::insert(setCoinsRet, group.m_outputs);
-            nValueRet += group.m_value;
         }
         return true;
     }
@@ -271,8 +265,6 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& group
     if (nTotalLower < nTargetValue) {
         if (!lowest_larger) return false;
         result.AddInput(*lowest_larger);
-        util::insert(setCoinsRet, lowest_larger->m_outputs);
-        nValueRet += lowest_larger->m_value;
         return true;
     }
 
@@ -291,14 +283,10 @@ bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& group
     if (lowest_larger &&
         ((nBest != nTargetValue && nBest < nTargetValue + MIN_CHANGE) || lowest_larger->GetSelectionAmount() <= nBest)) {
         result.AddInput(*lowest_larger);
-        util::insert(setCoinsRet, lowest_larger->m_outputs);
-        nValueRet += lowest_larger->m_value;
     } else {
         for (unsigned int i = 0; i < applicable_groups.size(); i++) {
             if (vfBest[i]) {
                 result.AddInput(applicable_groups[i]);
-                util::insert(setCoinsRet, applicable_groups[i].m_outputs);
-                nValueRet += applicable_groups[i].m_value;
             }
         }
 

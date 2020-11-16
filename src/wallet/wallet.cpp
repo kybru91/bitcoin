@@ -2413,10 +2413,8 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     // While nTargetValue includes the transaction fees for non-input things, it does not include the fee for creating a change output.
     // So we need to include that for KnapsackSolver and SRD as well, as we are expecting to create a change output.
 
-    std::set<CInputCoin> knapsack_coins;
-    CAmount knapsack_value;
     SelectionResult knapsack_result;
-    bool knapsack_ret = KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_coins, knapsack_value, knapsack_result);
+    bool knapsack_ret = KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_result);
 
     std::set<CInputCoin> srd_coins;
     CAmount srd_value;
