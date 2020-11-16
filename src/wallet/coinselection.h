@@ -189,6 +189,8 @@ struct SelectionResult
     void Clear();
 
     void AddInput(const OutputGroup& group);
+    /** Get the vector of CInputCoins that will be used to fill in a CTransaction's vin */
+    std::vector<CInputCoin> GetInputVector() const;
 };
 
 bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change, SelectionResult& result);
