@@ -2420,10 +2420,6 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     CAmount srd_value;
     SelectionResult srd_result;
     bool srd_ret = SelectCoinsSRD(positive_groups, nTargetValue + coin_selection_params.m_change_fee + MIN_FINAL_CHANGE, srd_coins, srd_value, srd_result);
-    CAmount srd_fees = 0;
-    for (const auto& coin : srd_coins) {
-        srd_fees += coin.m_fee;
-    }
 
     if (knapsack_ret) {
         setCoinsRet = knapsack_result.selected_inputs;
@@ -2431,9 +2427,9 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     }
     if (srd_ret) {
         // Use SRD if knapsack has no solution, SRD has lower fees, or SRD has more inputs for same fees
-        if (!knapsack_ret || srd_fees < knapsack_result.input_fees || (srd_fees == knapsack_result.input_fees && srd_coins.size() > knapsack_result.selected_inputs.size())) {
-            setCoinsRet = srd_coins;
-            nValueRet = srd_value;
+        if (!knapsack_ret || srd_result.input_fees < knapsack_result.input_fees || (srd_result.input_fees == knapsack_result.input_fees && srd_result.selected_inputs.size() > knapsack_result.selected_inputs.size())) {
+            setCoinsRet = srd_result.selected_inputs;
+            nValueRet = srd_result.GetSelectedValue();
         }
     }
     if (knapsack_ret || srd_ret) return true;
