@@ -2402,7 +2402,7 @@ bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibil
     // Note that unlike KnapsackSolver, we do not include the fee for creating a change output as BnB will not create a change output.
     std::vector<OutputGroup> positive_groups = GroupOutputs(coins, coin_selection_params, eligibility_filter, true /* positive_only */);
     SelectionResult bnb_result;
-    if (SelectCoinsBnB(positive_groups, nTargetValue, coin_selection_params.m_cost_of_change, setCoinsRet, nValueRet, bnb_result)) {
+    if (SelectCoinsBnB(positive_groups, nTargetValue, coin_selection_params.m_cost_of_change, bnb_result)) {
         setCoinsRet = bnb_result.selected_inputs;
         nValueRet = bnb_result.GetSelectedValue();
         return true;
