@@ -2838,6 +2838,11 @@ bool CWallet::CreateTransactionInternal(
     // Get the fee rate to use effective values in coin selection
     FeeCalculation feeCalc;
     coin_selection_params.effective_fee = GetMinimumFeeRate(*this, coin_control, &feeCalc);
+    if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
+        // eventually allow a fallback fee
+        error = _("Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable -fallbackfee.");
+        return false;
+    }
     // Do not, ever, assume that it's fine to change the fee rate if the user has explicitly
     // provided one
     if (coin_control.m_feerate && coin_selection_params.effective_fee > *coin_control.m_feerate) {
@@ -2939,12 +2944,7 @@ bool CWallet::CreateTransactionInternal(
         return false;
     }
 
-    CAmount fee_needed = GetMinimumFee(*this, nBytes, coin_control, &feeCalc);
-    if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
-        // eventually allow a fallback fee
-        error = _("Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable -fallbackfee.");
-        return false;
-    }
+    CAmount fee_needed = coin_selection_params.effective_fee.GetFee(nBytes);
     if (nFeeRet < fee_needed) {
         nFeeRet = fee_needed;
         // Try to reduce change to include necessary fee
