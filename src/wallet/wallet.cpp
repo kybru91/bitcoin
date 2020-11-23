@@ -2932,10 +2932,20 @@ bool CWallet::CreateTransactionInternal(
         nChangePosInOut = -1;
     }
 
-    // Dummy fill vin for maximum size estimation
+    // Shuffle selected coins and fill in final vin
+    std::vector<CInputCoin> selected_coins = selection.GetInputVector();
+
+    // Note how the sequence number is set to non-maxint so that
+    // the nLockTime set above actually works.
     //
-    for (const auto& coin : selection.selected_inputs) {
-        txNew.vin.push_back(CTxIn(coin.outpoint,CScript()));
+    // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
+    // we use the highest possible value in that range (maxint-2)
+    // to avoid conflicting with other possible uses of nSequence,
+    // and in the spirit of "smallest possible change from prior
+    // behavior."
+    const uint32_t nSequence = coin_control.m_signal_bip125_rbf.get_value_or(m_signal_rbf) ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
+    for (const auto& coin : selected_coins) {
+        txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
     }
 
     int nBytes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
@@ -2998,23 +3008,6 @@ bool CWallet::CreateTransactionInternal(
     // Give up if change keypool ran out and change is required
     if (scriptChange.empty() && nChangePosInOut != -1) {
         return false;
-    }
-
-    // Shuffle selected coins and fill in final vin
-    txNew.vin.clear();
-    std::vector<CInputCoin> selected_coins = selection.GetInputVector();
-
-    // Note how the sequence number is set to non-maxint so that
-    // the nLockTime set above actually works.
-    //
-    // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
-    // we use the highest possible value in that range (maxint-2)
-    // to avoid conflicting with other possible uses of nSequence,
-    // and in the spirit of "smallest possible change from prior
-    // behavior."
-    const uint32_t nSequence = coin_control.m_signal_bip125_rbf.get_value_or(m_signal_rbf) ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
-    for (const auto& coin : selected_coins) {
-        txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
     }
 
     if (sign && !SignTransaction(txNew)) {
