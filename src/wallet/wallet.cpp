@@ -2850,8 +2850,6 @@ bool CWallet::CreateTransactionInternal(
         return false;
     }
 
-    nFeeRet = 0;
-
     // vouts to the payees
     if (!coin_selection_params.m_subtract_fee_outputs) {
         coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
@@ -2901,10 +2899,20 @@ bool CWallet::CreateTransactionInternal(
         selected_eff += coin.effective_value;
     }
 
-    const CAmount remainder = selection.GetSelectedValue() - recipients_sum;
+    // Amount that coin selection deems to be change and its fee.
+    // Note that change fee is not accounted for yet and will be subtracted from this
+    // remainder. Additionally the actual amount we set initially will not account for
+    // any fees at all as the fee estimation that we do during coin selection tends to
+    // overestimate. The fees will be handled later when change is reduced by the final
+    // calculated fee. We only take fees into account for the remainder to deal with
+    // the coin selection algorithm having selected to not make change at all.
+    const CAmount remainder = selection.GetSelectedValue() - not_input_fees - selection.input_fees - recipients_sum;
+    // The amount we set for the change now does not include any fees
+    const CAmount change_remainder = selection.GetSelectedValue() - recipients_sum;
+    nFeeRet = 0;
     if (remainder > 0) {
         // Fill a vout to ourself
-        CTxOut newTxOut(remainder, scriptChange);
+        CTxOut newTxOut(change_remainder, scriptChange);
 
         CAmount cost_of_change = GetDiscardRate(*this).GetFee(coin_selection_params.change_spend_size) + coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
 
@@ -2915,7 +2923,7 @@ bool CWallet::CreateTransactionInternal(
         if (IsDust(newTxOut, discard_rate) || selected_eff <= recipients_sum + not_input_fees + cost_of_change) {
             nChangePosInOut = -1;
             assert(nFeeRet == 0);
-            nFeeRet = remainder;
+            nFeeRet = change_remainder;
         } else {
             if (nChangePosInOut == -1) {
                 // Insert change txn at random position:
@@ -2936,6 +2944,7 @@ bool CWallet::CreateTransactionInternal(
         }
     } else {
         nChangePosInOut = -1;
+        nFeeRet = change_remainder;
     }
 
     // Shuffle selected coins and fill in final vin
@@ -2962,11 +2971,12 @@ bool CWallet::CreateTransactionInternal(
 
     CAmount fee_needed = coin_selection_params.effective_fee.GetFee(nBytes);
     if (nFeeRet < fee_needed) {
+        CAmount fee_diff = fee_needed - nFeeRet;
         nFeeRet = fee_needed;
         // Try to reduce change to include necessary fee
         if (nChangePosInOut != -1 && !coin_selection_params.m_subtract_fee_outputs) {
             std::vector<CTxOut>::iterator change_position = txNew.vout.begin()+nChangePosInOut;
-            change_position->nValue -= nFeeRet;
+            change_position->nValue -= fee_diff;
             // If the change is now dust, get rid of it
             if (IsDust(*change_position, discard_rate))
             {
