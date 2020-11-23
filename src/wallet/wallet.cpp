@@ -2847,9 +2847,6 @@ bool CWallet::CreateTransactionInternal(
 
     nFeeRet = 0;
 
-    txNew.vin.clear();
-    txNew.vout.clear();
-
     // vouts to the payees
     if (!coin_selection_params.m_subtract_fee_outputs) {
         coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
