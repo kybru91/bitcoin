@@ -2961,11 +2961,43 @@ bool CWallet::CreateTransactionInternal(
     }
 
     CAmount fee_needed = coin_selection_params.effective_fee.GetFee(nBytes);
+    // Reduce output values for subtractFeeFromAmount
+    if (coin_selection_params.m_subtract_fee_outputs) {
+        nFeeRet = fee_needed;
+        int i = 0;
+        bool fFirst = true;
+        for (const auto& recipient : vecSend) {
+            if (i == nChangePosInOut) {
+                ++i;
+            }
+            CTxOut& txout = txNew.vout[i];
+
+            if (recipient.fSubtractFeeFromAmount) {
+                txout.nValue -= nFeeRet / outputs_to_subtract_fee_from; // Subtract fee equally from each selected recipient
+
+                if (fFirst) { // first receiver pays the remainder not divisible by output count
+                    fFirst = false;
+                    txout.nValue -= nFeeRet % outputs_to_subtract_fee_from;
+                }
+
+                // Error if this output is reduced to be below dust
+                if (IsDust(txout, chain().relayDustFee())) {
+                    if (txout.nValue < 0) {
+                        error = _("The transaction amount is too small to pay the fee");
+                    } else {
+                        error = _("The transaction amount is too small to send after the fee has been deducted");
+                    }
+                    return false;
+                }
+            }
+            ++i;
+        }
+    }
     if (nFeeRet < fee_needed) {
         CAmount fee_diff = fee_needed - nFeeRet;
         nFeeRet = fee_needed;
         // Try to reduce change to include necessary fee
-        if (nChangePosInOut != -1 && !coin_selection_params.m_subtract_fee_outputs) {
+        if (nChangePosInOut != -1) {
             std::vector<CTxOut>::iterator change_position = txNew.vout.begin()+nChangePosInOut;
             change_position->nValue -= fee_diff;
             // If the change is now dust, get rid of it
@@ -2974,40 +3006,6 @@ bool CWallet::CreateTransactionInternal(
                 nChangePosInOut = -1;
                 nFeeRet += change_position->nValue;
                 txNew.vout.erase(change_position);
-            }
-        }
-        // Reduce output values for subtractFeeFromAmount
-        else if (coin_selection_params.m_subtract_fee_outputs) {
-            int i = 0;
-            bool fFirst = true;
-            for (const auto& recipient : vecSend)
-            {
-                if (i == nChangePosInOut) {
-                    ++i;
-                }
-                CTxOut& txout = txNew.vout[i];
-
-                if (recipient.fSubtractFeeFromAmount)
-                {
-                    txout.nValue -= nFeeRet / outputs_to_subtract_fee_from; // Subtract fee equally from each selected recipient
-
-                    if (fFirst) // first receiver pays the remainder not divisible by output count
-                    {
-                        fFirst = false;
-                        txout.nValue -= nFeeRet % outputs_to_subtract_fee_from;
-                    }
-
-                    // Error if this output is reduced to be below dust
-                    if (IsDust(txout, chain().relayDustFee())) {
-                        if (txout.nValue < 0) {
-                            error = _("The transaction amount is too small to pay the fee");
-                        } else {
-                            error = _("The transaction amount is too small to send after the fee has been deducted");
-                        }
-                        return false;
-                    }
-                }
-                ++i;
             }
         }
     }
