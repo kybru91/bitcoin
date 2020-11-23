@@ -2894,11 +2894,6 @@ bool CWallet::CreateTransactionInternal(
         return false;
     }
 
-    CAmount selected_eff = 0;
-    for (const CInputCoin& coin : selection.selected_inputs) {
-        selected_eff += coin.effective_value;
-    }
-
     // Amount that coin selection deems to be change and its fee.
     // Note that change fee is not accounted for yet and will be subtracted from this
     // remainder. Additionally the actual amount we set initially will not account for
@@ -2914,13 +2909,9 @@ bool CWallet::CreateTransactionInternal(
         // Fill a vout to ourself
         CTxOut newTxOut(change_remainder, scriptChange);
 
-        CAmount cost_of_change = GetDiscardRate(*this).GetFee(coin_selection_params.change_spend_size) + coin_selection_params.effective_fee.GetFee(coin_selection_params.change_output_size);
-
         // Never create dust outputs; if we would, just
         // add the dust to the fee.
-        // When the selected_eff is within the exact match range
-        // (nValue + not_input_fees + cost_of_change), don't make change.
-        if (IsDust(newTxOut, discard_rate) || selected_eff <= recipients_sum + not_input_fees + cost_of_change) {
+        if (IsDust(newTxOut, discard_rate)) {
             nChangePosInOut = -1;
             assert(nFeeRet == 0);
             nFeeRet = change_remainder;
