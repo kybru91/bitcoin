@@ -2925,6 +2925,12 @@ bool CWallet::CreateTransactionInternal(
                 return false;
             }
 
+            // Empty scriptChange means we weren't able to make a change destination.
+            // Since we need change now, if scriptChange is empty, abort.
+            if (scriptChange.empty()) {
+                return false;
+            }
+
             std::vector<CTxOut>::iterator position = txNew.vout.begin()+nChangePosInOut;
             txNew.vout.insert(position, newTxOut);
         }
@@ -3003,11 +3009,6 @@ bool CWallet::CreateTransactionInternal(
                 ++i;
             }
         }
-    }
-
-    // Give up if change keypool ran out and change is required
-    if (scriptChange.empty() && nChangePosInOut != -1) {
-        return false;
     }
 
     if (sign && !SignTransaction(txNew)) {
