@@ -52,7 +52,7 @@ static void CoinSelection(benchmark::Bench& bench)
     const CoinSelectionParams coin_selection_params(34, 148, CFeeRate(0), 0, false);
     bench.run([&] {
         SelectionResult result;
-        bool success = wallet.SelectCoinsMinConf(1003 * COIN, filter_standard, coins, coin_selection_params, result);
+        bool success = wallet.AttemptSelection(1003 * COIN, filter_standard, coins, coin_selection_params, result);
         assert(success);
         assert(result.GetSelectedValue() == 1003 * COIN);
         assert(result.selected_inputs.size() == 2);

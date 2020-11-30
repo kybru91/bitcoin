@@ -2354,7 +2354,7 @@ const CTxOut& CWallet::FindNonChangeParentOutput(const CTransaction& tx, int out
     return ptx->vout[n];
 }
 
-bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins, const CoinSelectionParams& coin_selection_params, SelectionResult& result) const
+bool CWallet::AttemptSelection(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins, const CoinSelectionParams& coin_selection_params, SelectionResult& result) const
 {
     result.Clear();
 
@@ -2509,15 +2509,15 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
         Shuffle(vCoins.begin(), vCoins.end(), FastRandomContext());
     }
     bool res = value_to_select <= 0 ||
-        SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(1, 6, 0), vCoins, coin_selection_params, result) ||
-        SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(1, 1, 0), vCoins, coin_selection_params, result) ||
-        (m_spend_zero_conf_change && SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, 2), vCoins, coin_selection_params, result)) ||
-        (m_spend_zero_conf_change && SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)), vCoins, coin_selection_params, result)) ||
-        (m_spend_zero_conf_change && SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2), vCoins, coin_selection_params, result)) ||
-        (m_spend_zero_conf_change && SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1, true /* include_partial_groups */), vCoins, coin_selection_params, result)) ||
-        (m_spend_zero_conf_change && !fRejectLongChains && SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max(), true /* include_partial_groups */), vCoins, coin_selection_params, result));
+        AttemptSelection(value_to_select, CoinEligibilityFilter(1, 6, 0), vCoins, coin_selection_params, result) ||
+        AttemptSelection(value_to_select, CoinEligibilityFilter(1, 1, 0), vCoins, coin_selection_params, result) ||
+        (m_spend_zero_conf_change && AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, 2), vCoins, coin_selection_params, result)) ||
+        (m_spend_zero_conf_change && AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)), vCoins, coin_selection_params, result)) ||
+        (m_spend_zero_conf_change && AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2), vCoins, coin_selection_params, result)) ||
+        (m_spend_zero_conf_change && AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1, true /* include_partial_groups */), vCoins, coin_selection_params, result)) ||
+        (m_spend_zero_conf_change && !fRejectLongChains && AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max(), true /* include_partial_groups */), vCoins, coin_selection_params, result));
 
-    // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
+    // because AttemptSelection clears the setCoinsRet, we now add the possible inputs to the coinset
     result.AddInput(preset_inputs);
 
     return res;
