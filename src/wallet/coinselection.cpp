@@ -416,6 +416,11 @@ std::vector<CInputCoin> SelectionResult::GetInputVector() const
 
 CAmount SelectionResult::GetWaste() const
 {
+    // If the result is empty, then selection failed. Don't use this one, so set waste to very high
+    if (selected_inputs.empty()) {
+        return MAX_MONEY;
+    }
+
     // Always consider the cost of spending an input now vs in the future.
     CAmount waste = 0;
     for (const CInputCoin& coin : selected_inputs) {

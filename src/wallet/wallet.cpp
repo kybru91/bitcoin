@@ -2401,10 +2401,9 @@ bool CWallet::AttemptSelection(const CAmount& nTargetValue, const CoinEligibilit
     // Note that unlike KnapsackSolver, we do not include the fee for creating a change output as BnB will not create a change output.
     std::vector<OutputGroup> positive_groups = GroupOutputs(coins, coin_selection_params, eligibility_filter, true /* positive_only */);
     SelectionResult bnb_result(coin_selection_params.m_cost_of_change);
-    if (SelectCoinsBnB(positive_groups, nTargetValue, coin_selection_params.m_cost_of_change, bnb_result)) {
+    bool bnb_ret = SelectCoinsBnB(positive_groups, nTargetValue, coin_selection_params.m_cost_of_change, bnb_result);
+    if (bnb_ret) {
         WalletLogPrintf("BnB solution: %s\n", bnb_result.ToString());
-        result = bnb_result;
-        return true;
     }
 
     // The knapsack solver has some legacy behavior where it will spend dust outputs. We retain this behavior, so don't filter for positive only here.
@@ -2424,20 +2423,30 @@ bool CWallet::AttemptSelection(const CAmount& nTargetValue, const CoinEligibilit
         WalletLogPrintf("SRD solution: %s\n", srd_result.ToString());
     }
 
-    if (knapsack_ret) {
-        result = knapsack_result;
+    if (!bnb_ret && !knapsack_ret && !srd_ret) {
+        // No solution found
+        result.Clear();
+        return false;
     }
-    if (srd_ret) {
-        // Use SRD if knapsack has no solution, SRD has lower fees, or SRD has more inputs for same fees
-        if (!knapsack_ret || srd_result.input_fees < knapsack_result.input_fees || (srd_result.input_fees == knapsack_result.input_fees && srd_result.selected_inputs.size() > knapsack_result.selected_inputs.size())) {
-            result = srd_result;
+
+    // Choose the result with the best waste
+    std::vector<SelectionResult> results{bnb_result, knapsack_result, srd_result};
+    SelectionResult best_result;
+    for (const SelectionResult& sel : results) {
+        CAmount best_waste = best_result.GetWaste();
+        CAmount sel_waste = sel.GetWaste();
+        if (sel_waste < best_waste) {
+            best_result = sel;
+        } else if (sel_waste == best_waste) {
+            // Same waste, choose one that consolidates more (more inputs)
+            if (sel.selected_inputs.size() > best_result.selected_inputs.size()) {
+                best_result = sel;
+            }
         }
     }
-    if (knapsack_ret || srd_ret) return true;
 
-    // No solution
-    result.Clear();
-    return false;
+    result = best_result;
+    return true;
 }
 
 bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAmount& nTargetValue, const CCoinControl& coin_control, CoinSelectionParams& coin_selection_params, SelectionResult& result) const
