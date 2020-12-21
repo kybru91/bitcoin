@@ -132,6 +132,14 @@ inline std::vector<OutputGroup>& GroupCoins(const std::vector<COutput>& coins)
     return static_groups;
 }
 
+inline std::vector<OutputGroup>& KnapsackGroupOutputs(const CoinEligibilityFilter& filter)
+{
+    static std::vector<OutputGroup> static_groups;
+    static_groups.clear();
+    static_groups = testWallet.GroupOutputs(vCoins, coin_selection_params, filter, false);
+    return static_groups;
+}
+
 // Branch and bound coin selection tests
 BOOST_AUTO_TEST_CASE(bnb_search_test)
 {
@@ -307,24 +315,24 @@ BOOST_AUTO_TEST_CASE(knapsack_solver_test)
         empty_wallet();
 
         // with an empty wallet we can't even pay one cent
-        BOOST_CHECK(!testWallet.AttemptSelection( 1 * CENT, filter_standard, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK(!KnapsackSolver( 1 * CENT, KnapsackGroupOutputs(filter_standard), knapsack_result));
 
         add_coin(1*CENT, 4);        // add a new 1 cent coin
 
         // with a new 1 cent coin, we still can't find a mature 1 cent
-        BOOST_CHECK(!testWallet.AttemptSelection( 1 * CENT, filter_standard, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK(!KnapsackSolver( 1 * CENT, KnapsackGroupOutputs(filter_standard), knapsack_result));
 
         // but we can find a new 1 cent
-        BOOST_CHECK( testWallet.AttemptSelection( 1 * CENT, filter_confirmed, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK(KnapsackSolver( 1 * CENT, KnapsackGroupOutputs(filter_confirmed), knapsack_result));
         BOOST_CHECK_EQUAL(knapsack_result.GetSelectedValue(), 1 * CENT);
 
         add_coin(2*CENT);           // add a mature 2 cent coin
 
         // we can't make 3 cents of mature coins
-        BOOST_CHECK(!testWallet.AttemptSelection( 3 * CENT, filter_standard, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK(!KnapsackSolver( 3 * CENT, KnapsackGroupOutputs(filter_standard), knapsack_result));
 
         // we can make 3 cents of new coins
-        BOOST_CHECK( testWallet.AttemptSelection( 3 * CENT, filter_confirmed, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK( KnapsackSolver( 3 * CENT, KnapsackGroupOutputs(filter_confirmed), knapsack_result));
         BOOST_CHECK_EQUAL(knapsack_result.GetSelectedValue(), 3 * CENT);
 
         add_coin(5*CENT);           // add a mature 5 cent coin,
@@ -334,14 +342,14 @@ BOOST_AUTO_TEST_CASE(knapsack_solver_test)
         // now we have new: 1+10=11 (of which 10 was self-sent), and mature: 2+5+20=27.  total = 38
 
         // we can't make 38 cents only if we disallow new coins:
-        BOOST_CHECK(!testWallet.AttemptSelection(38 * CENT, filter_standard, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK(!KnapsackSolver(38 * CENT, KnapsackGroupOutputs(filter_standard), knapsack_result));
         // we can't even make 37 cents if we don't allow new coins even if they're from us
-        BOOST_CHECK(!testWallet.AttemptSelection(38 * CENT, filter_standard_extra, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK(!KnapsackSolver(38 * CENT, KnapsackGroupOutputs(filter_standard_extra), knapsack_result));
         // but we can make 37 cents if we accept new coins from ourself
-        BOOST_CHECK( testWallet.AttemptSelection(37 * CENT, filter_standard, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK( KnapsackSolver(37 * CENT, KnapsackGroupOutputs(filter_standard), knapsack_result));
         BOOST_CHECK_EQUAL(knapsack_result.GetSelectedValue(), 37 * CENT);
         // and we can make 38 cents if we accept all new coins
-        BOOST_CHECK( testWallet.AttemptSelection(38 * CENT, filter_confirmed, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK( KnapsackSolver(38 * CENT, KnapsackGroupOutputs(filter_confirmed), knapsack_result));
         BOOST_CHECK_EQUAL(knapsack_result.GetSelectedValue(), 38 * CENT);
 
         // try making 34 cents from 1,2,5,10,20 - we can't do it exactly
@@ -350,12 +358,12 @@ BOOST_AUTO_TEST_CASE(knapsack_solver_test)
         BOOST_CHECK_EQUAL(knapsack_result.selected_inputs.size(), 3U);     // the best should be 20+10+5.  it's incredibly unlikely the 1 or 2 got included (but possible)
 
         // when we try making 7 cents, the smaller coins (1,2,5) are enough.  We should see just 2+5
-        BOOST_CHECK( testWallet.AttemptSelection( 7 * CENT, filter_confirmed, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK( KnapsackSolver( 7 * CENT, KnapsackGroupOutputs(filter_confirmed), knapsack_result));
         BOOST_CHECK_EQUAL(knapsack_result.GetSelectedValue(), 7 * CENT);
         BOOST_CHECK_EQUAL(knapsack_result.selected_inputs.size(), 2U);
 
         // when we try making 8 cents, the smaller coins (1,2,5) are exactly enough.
-        BOOST_CHECK( testWallet.AttemptSelection( 8 * CENT, filter_confirmed, vCoins, coin_selection_params, knapsack_result));
+        BOOST_CHECK( KnapsackSolver( 8 * CENT, KnapsackGroupOutputs(filter_confirmed), knapsack_result));
         BOOST_CHECK_EQUAL(knapsack_result.GetSelectedValue(), 8 * CENT);
         BOOST_CHECK_EQUAL(knapsack_result.selected_inputs.size(), 3U);
 
