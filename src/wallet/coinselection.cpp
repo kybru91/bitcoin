@@ -64,6 +64,8 @@ static const size_t TOTAL_TRIES = 100000;
 bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selection_target, const CAmount& cost_of_change, SelectionResult& result)
 {
     result.Clear();
+    result.m_target = selection_target;
+    result.m_make_change = false;
     CAmount curr_value = 0;
 
     std::vector<bool> curr_selection; // select the utxo at this index
@@ -159,11 +161,9 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selectio
     // Set output set
     for (size_t i = 0; i < best_selection.size(); ++i) {
         if (best_selection.at(i)) {
-            util::insert(result.selected_inputs, utxo_pool.at(i).m_outputs);
+            result.AddInput(utxo_pool.at(i));
         }
     }
-    // Set the input fees in the result
-    result.input_fees = result.GetSelectedValue() - selection_target;
 
     return true;
 }
@@ -171,6 +171,8 @@ bool SelectCoinsBnB(std::vector<OutputGroup>& utxo_pool, const CAmount& selectio
 bool SelectCoinsSRD(std::vector<OutputGroup>& utxo_pool, const CAmount& target_value, SelectionResult& result)
 {
     result.Clear();
+    result.m_target = target_value;
+    result.m_make_change = true;
 
     CAmount selected_eff_value = 0;
     Shuffle(utxo_pool.begin(), utxo_pool.end(), FastRandomContext());
@@ -233,6 +235,8 @@ static void ApproximateBestSubset(const std::vector<OutputGroup>& groups, const 
 bool KnapsackSolver(const CAmount& nTargetValue, std::vector<OutputGroup>& groups, SelectionResult& result)
 {
     result.Clear();
+    result.m_target = nTargetValue;
+    result.m_make_change = true;
 
     // List of values less than target
     std::optional<OutputGroup> lowest_larger;
@@ -388,6 +392,8 @@ void SelectionResult::Clear()
 {
     selected_inputs.clear();
     input_fees = 0;
+    m_make_change = false;
+    m_target = 0;
 }
 
 void SelectionResult::AddInput(const OutputGroup& group)
@@ -401,4 +407,22 @@ std::vector<CInputCoin> SelectionResult::GetInputVector() const
     std::vector<CInputCoin> coins(selected_inputs.begin(), selected_inputs.end());
     Shuffle(coins.begin(), coins.end(), FastRandomContext());
     return coins;
+}
+
+CAmount SelectionResult::GetWaste() const
+{
+    // Always consider the cost of spending an input now vs in the future.
+    CAmount waste = 0;
+    for (const CInputCoin& coin : selected_inputs) {
+        waste += coin.m_fee - coin.m_long_term_fee;
+    }
+
+    if (m_make_change) {
+        // If we are making change, consider the cost of making the change output now and spending in the future
+        return waste + m_change_cost;
+    } else {
+        // If we are not making change, consider the excess we are throwing away to fee
+        waste += GetSelectedValue() - m_target;
+        return waste;
+    }
 }
