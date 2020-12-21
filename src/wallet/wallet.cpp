@@ -2395,12 +2395,14 @@ const CTxOut& CWallet::FindNonChangeParentOutput(const CTransaction& tx, int out
 
 bool CWallet::AttemptSelection(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins, const CoinSelectionParams& coin_selection_params, SelectionResult& result) const
 {
+    WalletLogPrintf("Attempting Coin Selection. Target: %ld, filter: %s\n", nTargetValue, eligibility_filter.ToString());
     result.Clear();
 
     // Note that unlike KnapsackSolver, we do not include the fee for creating a change output as BnB will not create a change output.
     std::vector<OutputGroup> positive_groups = GroupOutputs(coins, coin_selection_params, eligibility_filter, true /* positive_only */);
     SelectionResult bnb_result(coin_selection_params.m_cost_of_change);
     if (SelectCoinsBnB(positive_groups, nTargetValue, coin_selection_params.m_cost_of_change, bnb_result)) {
+        WalletLogPrintf("BnB solution: %s\n", bnb_result.ToString());
         result = bnb_result;
         return true;
     }
@@ -2412,9 +2414,15 @@ bool CWallet::AttemptSelection(const CAmount& nTargetValue, const CoinEligibilit
 
     SelectionResult knapsack_result(coin_selection_params.m_cost_of_change);
     bool knapsack_ret = KnapsackSolver(nTargetValue + coin_selection_params.m_change_fee, all_groups, knapsack_result);
+    if (knapsack_ret) {
+        WalletLogPrintf("Knapsack solution: %s\n", knapsack_result.ToString());
+    }
 
     SelectionResult srd_result(coin_selection_params.m_cost_of_change);
     bool srd_ret = SelectCoinsSRD(positive_groups, nTargetValue + coin_selection_params.m_change_fee + MIN_FINAL_CHANGE, srd_result);
+    if (srd_ret) {
+        WalletLogPrintf("SRD solution: %s\n", srd_result.ToString());
+    }
 
     if (knapsack_ret) {
         result = knapsack_result;

@@ -356,6 +356,11 @@ CAmount OutputGroup::GetSelectionAmount() const
     return m_subtract_fee_outputs ? m_value : effective_value;
 }
 
+std::string CoinEligibilityFilter::ToString() const
+{
+    return strprintf("conf_mine %d, conf_theirs %d, max_ancestors %lu, max_descendants %lu, include partial groups %d", conf_mine, conf_theirs, max_ancestors, max_descendants, m_include_partial_groups);
+}
+
 CAmount SelectionResult::GetSelectedValue() const
 {
     CAmount ret = 0;
@@ -425,4 +430,10 @@ CAmount SelectionResult::GetWaste() const
         waste += GetSelectedValue() - m_target;
         return waste;
     }
+}
+
+std::string SelectionResult::ToString() const
+{
+    return strprintf("Algo target: %ld, selected value %ld, %lu inputs, input fees %ld, waste %ld, cost of change %ld, making change %d",
+            m_target, GetSelectedValue(), selected_inputs.size(), input_fees, GetWaste(), m_change_cost, m_make_change);
 }
