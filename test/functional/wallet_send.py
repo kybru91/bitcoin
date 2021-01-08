@@ -14,7 +14,7 @@ from test_framework.messages import (
     ser_compact_size,
     WITNESS_SCALE_FACTOR,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinWalletTestFramework
 from test_framework.util import (
     assert_equal,
     assert_fee_amount,
@@ -24,7 +24,7 @@ from test_framework.util import (
 )
 from test_framework.wallet_util import bytes_to_wif
 
-class WalletSendTest(BitcoinTestFramework):
+class WalletSendTest(BitcoinWalletTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         # whitelist all peers to speed up tx relay / mempool sync

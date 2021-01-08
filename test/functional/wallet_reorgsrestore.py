@@ -17,12 +17,12 @@ from decimal import Decimal
 import os
 import shutil
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinWalletTestFramework
 from test_framework.util import (
         assert_equal,
 )
 
-class ReorgsRestoreTest(BitcoinTestFramework):
+class ReorgsRestoreTest(BitcoinWalletTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
 

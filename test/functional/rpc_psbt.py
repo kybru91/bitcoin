@@ -14,7 +14,7 @@ from test_framework.messages import (
     ser_compact_size,
     WITNESS_SCALE_FACTOR,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import BitcoinWalletTestFramework
 from test_framework.util import (
     assert_approx,
     assert_equal,
@@ -30,7 +30,7 @@ import os
 MAX_BIP125_RBF_SEQUENCE = 0xfffffffd
 
 # Create one-input, one-output, no-fee transaction:
-class PSBTTest(BitcoinTestFramework):
+class PSBTTest(BitcoinWalletTestFramework):
 
     def set_test_params(self):
         self.num_nodes = 3
