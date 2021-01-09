@@ -65,7 +65,7 @@ class BitcoinTestMetaClass(type):
     those standards are violated, a ``TypeError`` is raised."""
 
     def __new__(cls, clsname, bases, dct):
-        if not clsname == 'BitcoinTestFramework':
+        if not clsname == 'BitcoinTestFramework' and not clsname == "BitcoinWalletTestFramework":
             if not ('run_test' in dct and 'set_test_params' in dct):
                 raise TypeError("BitcoinTestFramework subclasses must override "
                                 "'run_test' and 'set_test_params'")
@@ -123,7 +123,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             self.options.timeout_factor = 99999
         self.rpc_timeout = int(self.rpc_timeout * self.options.timeout_factor) # optionally, increase timeout by a factor
 
-    def main(self):
+    def main(self, exit_on_done=True):
         """Main function. This should not be overridden by the subclass test scripts."""
 
         assert hasattr(self, "num_nodes"), "Test must set self.num_nodes in set_test_params()"
@@ -154,7 +154,10 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             self.success = TestStatus.FAILED
         finally:
             exit_code = self.shutdown()
-            sys.exit(exit_code)
+            if exit_on_done:
+                sys.exit(exit_code)
+            else:
+                return self.success
 
     def parse_args(self):
         previous_releases_path = os.getenv("PREVIOUS_RELEASES_DIR") or os.getcwd() + "/releases"
@@ -212,6 +215,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         config.read_file(open(self.options.configfile))
         self.config = config
 
+        self.descriptors_unset = self.options.descriptors is None
         if self.options.descriptors is None:
             # Prefer BDB unless it isn't available
             if self.is_bdb_compiled():
@@ -871,6 +875,18 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         else:
             self.skip_if_no_bdb()
 
+    def skip_if_not_legacy_wallet(self):
+        """Skip the running test if we are not running in legacy wallet mode"""
+        if self.options.descriptors:
+            raise SkipTest("legacy wallet only test")
+        self.skip_if_no_bdb()
+
+    def skip_if_not_descriptor_wallet(self):
+        """Skip the running test if we are not running in descriptor wallet mode"""
+        if not self.options.descriptors:
+            raise SkipTest("descriptor wallet only test")
+        self.skip_if_no_sqlite()
+
     def skip_if_no_sqlite(self):
         """Skip the running test if sqlite has not been compiled."""
         if not self.is_sqlite_compiled():
@@ -961,3 +977,43 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
     def is_syscall_sandbox_compiled(self):
         """Checks whether the syscall sandbox was compiled."""
         return self.config["components"].getboolean("ENABLE_SYSCALL_SANDBOX")
+
+
+class BitcoinWalletTestFramework(BitcoinTestFramework):
+    def main(self, exit_on_done=True):
+        """
+        Override BitcoinTestFramework.main() so that both legacy
+        wallet tests and descriptor wallet tests can be done.
+        Here, exit_on_done is ignored. This parameter is in
+        BitcoinTestFramework.main so that we can tell
+        it to not exit and do the exit code handling here.
+        """
+        exit_codes = [TestStatus.SKIPPED, TestStatus.SKIPPED]
+        # Do the legacy wallet test if not --descriptors or not set
+        if self.descriptors_unset or not self.options.descriptors:
+            self.options.descriptors = False
+            self.wallet_type = "Legacy"
+            exit_codes[0] = super().main(False)
+        # Do the descriptor wallet test if --descriptors or not set
+        if self.descriptors_unset or self.options.descriptors:
+            self.options.descriptors = True
+            self.wallet_type = "Descriptor"
+            self.default_wallet_name = "default_wallet" if self.options.descriptors else ""
+            exit_codes[1] = super().main(False)
+
+        # Determine the exit code
+        # If one failed, the test failed.
+        # If both skipped, the test skipped.
+        # If one passed and the other skipped, the test passed
+        if any([ec == TestStatus.FAILED for ec in exit_codes]):
+            sys.exit(TEST_EXIT_FAILED)
+        if all([ec == TestStatus.SKIPPED for ec in exit_codes]):
+            sys.exit(TEST_EXIT_SKIPPED)
+        if any([ec == TestStatus.PASSED for ec in exit_codes]):
+            sys.exit(TEST_EXIT_PASSED)
+
+        assert False, "Unhandled exit scenario Legacy {}, descriptor {}".format(exit_codes[0], exit_codes[1])
+
+    def setup(self):
+        super().setup()
+        self.log.info("Running {} wallet test".format(self.wallet_type))
