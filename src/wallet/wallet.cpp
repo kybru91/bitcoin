@@ -2393,7 +2393,7 @@ const CTxOut& CWallet::FindNonChangeParentOutput(const CTransaction& tx, int out
     return ptx->vout[n];
 }
 
-bool CWallet::SelectCoinsMinConf(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins, const CoinSelectionParams& coin_selection_params, SelectionResult& result) const
+bool CWallet::AttemptSelection(const CAmount& nTargetValue, const CoinEligibilityFilter& eligibility_filter, std::vector<COutput> coins, const CoinSelectionParams& coin_selection_params, SelectionResult& result) const
 {
     result.Clear();
 
@@ -2531,32 +2531,32 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
 
         // If possible, fund the transaction with confirmed UTXOs only. Prefer at least six
         // confirmations on outputs received from other wallets and only spend confirmed change.
-        if (SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(1, 6, 0), vCoins, coin_selection_params, result)) return true;
-        if (SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(1, 1, 0), vCoins, coin_selection_params, result)) return true;
+        if (AttemptSelection(value_to_select, CoinEligibilityFilter(1, 6, 0), vCoins, coin_selection_params, result)) return true;
+        if (AttemptSelection(value_to_select, CoinEligibilityFilter(1, 1, 0), vCoins, coin_selection_params, result)) return true;
 
         // Fall back to using zero confirmation change (but with as few ancestors in the mempool as
         // possible) if we cannot fund the transaction otherwise.
         if (m_spend_zero_conf_change) {
-            if (SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, 2), vCoins,coin_selection_params, result)) return true;
-            if (SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)),
+            if (AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, 2), vCoins,coin_selection_params, result)) return true;
+            if (AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, std::min((size_t)4, max_ancestors/3), std::min((size_t)4, max_descendants/3)),
                                    vCoins, coin_selection_params, result)) {
                 return true;
             }
-            if (SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2),
+            if (AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors/2, max_descendants/2),
                                    vCoins, coin_selection_params, result)) {
                 return true;
             }
             // If partial groups are allowed, relax the requirement of spending OutputGroups (groups
             // of UTXOs sent to the same address, which are obviously controlled by a single wallet)
             // in their entirety.
-            if (SelectCoinsMinConf(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1, true /* include_partial_groups */),
+            if (AttemptSelection(value_to_select, CoinEligibilityFilter(0, 1, max_ancestors-1, max_descendants-1, true /* include_partial_groups */),
                                    vCoins, coin_selection_params, result)) {
                 return true;
             }
             // Try with unsafe inputs if they are allowed. This may spend unconfirmed outputs
             // received from other wallets.
             if (coin_control.m_include_unsafe_inputs
-                && SelectCoinsMinConf(value_to_select,
+                && AttemptSelection(value_to_select,
                     CoinEligibilityFilter(0 /* conf_mine */, 0 /* conf_theirs */, max_ancestors-1, max_descendants-1, true /* include_partial_groups */),
                     vCoins, coin_selection_params, result)) {
                 return true;
@@ -2564,7 +2564,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
             // Try with unlimited ancestors/descendants. The transaction will still need to meet
             // mempool ancestor/descendant policy to be accepted to mempool and broadcasted, but
             // OutputGroups use heuristics that may overestimate ancestor/descendant counts.
-            if (!fRejectLongChains && SelectCoinsMinConf(value_to_select,
+            if (!fRejectLongChains && AttemptSelection(value_to_select,
                                       CoinEligibilityFilter(0, 1, std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint64_t>::max(), true /* include_partial_groups */),
                                       vCoins, coin_selection_params, result)) {
                 return true;
@@ -2574,7 +2574,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
         return false;
     }();
 
-    // because SelectCoinsMinConf clears the setCoinsRet, we now add the possible inputs to the coinset
+    // because AttemptSelection clears the setCoinsRet, we now add the possible inputs to the coinset
     result.AddInput(preset_inputs);
 
     return res;
