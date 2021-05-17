@@ -2832,6 +2832,12 @@ bool CWallet::CreateTransactionInternal(
         return false;
     }
 
+    CMutableTransaction txNew; // The resulting transaction that we make
+    txNew.nLockTime = GetLocktimeForNewTransaction(chain(), GetLastBlockHash(), GetLastBlockHeight());
+
+    CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
+    coin_selection_params.m_avoid_partial_spends = coin_control.m_avoid_partial_spends;
+
     CAmount recipients_sum = 0;
     const OutputType change_type = TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : m_default_change_type, vecSend);
     ReserveDestination reservedest(this, change_type);
@@ -2848,17 +2854,6 @@ bool CWallet::CreateTransactionInternal(
         if (recipient.fSubtractFeeFromAmount)
             outputs_to_subtract_fee_from++;
     }
-
-    CMutableTransaction txNew;
-    FeeCalculation feeCalc;
-    std::pair<int64_t, int64_t> tx_sizes;
-    int nBytes;
-    SelectionResult selection;
-    txNew.nLockTime = GetLocktimeForNewTransaction(chain(), GetLastBlockHash(), GetLastBlockHeight());
-    std::vector<COutput> vAvailableCoins;
-    AvailableCoins(vAvailableCoins, &coin_control, 1, MAX_MONEY, MAX_MONEY, 0);
-    CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
-    coin_selection_params.m_avoid_partial_spends = coin_control.m_avoid_partial_spends;
 
     // Create change script that will be used if we need change
     // TODO: pass in scriptChange instead of reservedest so
@@ -2905,6 +2900,7 @@ bool CWallet::CreateTransactionInternal(
     coin_selection_params.m_discard_feerate = GetDiscardRate(*this);
 
     // Get the fee rate to use effective values in coin selection
+    FeeCalculation feeCalc;
     coin_selection_params.m_effective_feerate = GetMinimumFeeRate(*this, coin_control, &feeCalc);
     // Do not, ever, assume that it's fine to change the fee rate if the user has explicitly
     // provided one
@@ -2958,7 +2954,12 @@ bool CWallet::CreateTransactionInternal(
     const CAmount not_input_fees = coin_selection_params.m_effective_feerate.GetFee(coin_selection_params.tx_noinputs_size);
     CAmount selection_target = recipients_sum + not_input_fees;
 
+    // Get available coins
+    std::vector<COutput> vAvailableCoins;
+    AvailableCoins(vAvailableCoins, &coin_control, 1, MAX_MONEY, MAX_MONEY, 0);
+
     // Choose coins to use
+    SelectionResult selection;
     if (!SelectCoins(vAvailableCoins, selection_target, coin_control, coin_selection_params, selection))
     {
         error = _("Insufficient funds");
@@ -2992,8 +2993,8 @@ bool CWallet::CreateTransactionInternal(
     }
 
     // Calculate the transaction fee
-    tx_sizes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
-    nBytes = tx_sizes.first;
+    std::pair<int64_t, int64_t> tx_sizes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
+    int nBytes = tx_sizes.first;
     if (nBytes < 0) {
         error = _("Signing transaction failed");
         return false;
