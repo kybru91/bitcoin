@@ -2827,6 +2827,11 @@ bool CWallet::CreateTransactionInternal(
 {
     LOCK(cs_wallet);
 
+    if (vecSend.empty()) {
+        error = _("Transaction must have at least one recipient");
+        return false;
+    }
+
     CAmount recipients_sum = 0;
     const OutputType change_type = TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : m_default_change_type, vecSend);
     ReserveDestination reservedest(this, change_type);
@@ -2842,11 +2847,6 @@ bool CWallet::CreateTransactionInternal(
 
         if (recipient.fSubtractFeeFromAmount)
             outputs_to_subtract_fee_from++;
-    }
-    if (vecSend.empty())
-    {
-        error = _("Transaction must have at least one recipient");
-        return false;
     }
 
     CMutableTransaction txNew;
