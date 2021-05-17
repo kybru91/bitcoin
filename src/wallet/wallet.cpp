@@ -2825,6 +2825,8 @@ bool CWallet::CreateTransactionInternal(
         FeeCalculation& fee_calc_out,
         bool sign)
 {
+    LOCK(cs_wallet);
+
     CAmount nValue = 0;
     const OutputType change_type = TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : m_default_change_type, vecSend);
     ReserveDestination reservedest(this, change_type);
@@ -2851,258 +2853,255 @@ bool CWallet::CreateTransactionInternal(
     FeeCalculation feeCalc;
     std::pair<int64_t, int64_t> tx_sizes;
     int nBytes;
+    SelectionResult selection;
+    txNew.nLockTime = GetLocktimeForNewTransaction(chain(), GetLastBlockHash(), GetLastBlockHeight());
     {
-        SelectionResult selection;
-        LOCK(cs_wallet);
-        txNew.nLockTime = GetLocktimeForNewTransaction(chain(), GetLastBlockHash(), GetLastBlockHeight());
+        std::vector<COutput> vAvailableCoins;
+        AvailableCoins(vAvailableCoins, &coin_control, 1, MAX_MONEY, MAX_MONEY, 0);
+        CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
+        coin_selection_params.m_avoid_partial_spends = coin_control.m_avoid_partial_spends;
+
+        // Create change script that will be used if we need change
+        // TODO: pass in scriptChange instead of reservedest so
+        // change transaction isn't always pay-to-bitcoin-address
+        CScript scriptChange;
+
+        // coin control: send change to custom address
+        if (!std::get_if<CNoDestination>(&coin_control.destChange)) {
+            scriptChange = GetScriptForDestination(coin_control.destChange);
+        } else { // no coin control: send change to newly generated address
+            // Note: We use a new key here to keep it from being obvious which side is the change.
+            //  The drawback is that by not reusing a previous key, the change may be lost if a
+            //  backup is restored, if the backup doesn't have the new private key for the change.
+            //  If we reused the old key, it would be possible to add code to look for and
+            //  rediscover unknown transactions that were written with keys of ours to recover
+            //  post-backup change.
+
+            // Reserve a new key pair from key pool. If it fails, provide a dummy
+            // destination in case we don't need change.
+            CTxDestination dest;
+            if (!reservedest.GetReservedDestination(dest, true)) {
+                error = _("Transaction needs a change address, but we can't generate it. Please call keypoolrefill first.");
+            }
+            scriptChange = GetScriptForDestination(dest);
+            // A valid destination implies a change script (and
+            // vice-versa). An empty change script will abort later, if the
+            // change keypool ran out, but change is required.
+            CHECK_NONFATAL(IsValidDestination(dest) != scriptChange.empty());
+        }
+        CTxOut change_prototype_txout(0, scriptChange);
+        coin_selection_params.change_output_size = GetSerializeSize(change_prototype_txout);
+
+        // Get size of spending the change output
+        int change_spend_size = CalculateMaximumSignedInputSize(change_prototype_txout, this);
+        // If the wallet doesn't know how to sign change output, assume p2sh-p2wpkh
+        // as lower-bound to allow BnB to do it's thing
+        if (change_spend_size == -1) {
+            coin_selection_params.change_spend_size = DUMMY_NESTED_P2WPKH_INPUT_SIZE;
+        } else {
+            coin_selection_params.change_spend_size = (size_t)change_spend_size;
+        }
+
+        // Set discard feerate
+        coin_selection_params.m_discard_feerate = GetDiscardRate(*this);
+
+        // Get the fee rate to use effective values in coin selection
+        coin_selection_params.m_effective_feerate = GetMinimumFeeRate(*this, coin_control, &feeCalc);
+        // Do not, ever, assume that it's fine to change the fee rate if the user has explicitly
+        // provided one
+        if (coin_control.m_feerate && coin_selection_params.m_effective_feerate > *coin_control.m_feerate) {
+            error = strprintf(_("Fee rate (%s) is lower than the minimum fee rate setting (%s)"), coin_control.m_feerate->ToString(FeeEstimateMode::SAT_VB), coin_selection_params.m_effective_feerate.ToString(FeeEstimateMode::SAT_VB));
+            return false;
+        }
+        if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
+            // eventually allow a fallback fee
+            error = _("Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable -fallbackfee.");
+            return false;
+        }
+
+        // Get long term estimate
+        CCoinControl cc_temp;
+        cc_temp.m_confirm_target = chain().estimateMaxBlocks();
+        coin_selection_params.m_long_term_feerate = GetMinimumFeeRate(*this, cc_temp, nullptr);
+
+        // Calculate the cost of change
+        // Cost of change is the cost of creating the change output + cost of spending the change output in the future.
+        // For creating the change output now, we use the effective feerate.
+        // For spending the change output in the future, we use the discard feerate for now.
+        // So cost of change = (change output size * effective feerate) + (size of spending change output * discard feerate)
+        coin_selection_params.m_change_fee = coin_selection_params.m_effective_feerate.GetFee(coin_selection_params.change_output_size);
+        coin_selection_params.m_cost_of_change = coin_selection_params.m_discard_feerate.GetFee(coin_selection_params.change_spend_size) + coin_selection_params.m_change_fee;
+
+        coin_selection_params.m_subtract_fee_outputs = nSubtractFeeFromAmount != 0; // If we are doing subtract fee from recipient, don't use effective values
+
+        // vouts to the payees
+        if (!coin_selection_params.m_subtract_fee_outputs) {
+            coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
+        }
+        for (const auto& recipient : vecSend)
         {
-            std::vector<COutput> vAvailableCoins;
-            AvailableCoins(vAvailableCoins, &coin_control, 1, MAX_MONEY, MAX_MONEY, 0);
-            CoinSelectionParams coin_selection_params; // Parameters for coin selection, init with dummy
-            coin_selection_params.m_avoid_partial_spends = coin_control.m_avoid_partial_spends;
+            CTxOut txout(recipient.nAmount, recipient.scriptPubKey);
 
-            // Create change script that will be used if we need change
-            // TODO: pass in scriptChange instead of reservedest so
-            // change transaction isn't always pay-to-bitcoin-address
-            CScript scriptChange;
-
-            // coin control: send change to custom address
-            if (!std::get_if<CNoDestination>(&coin_control.destChange)) {
-                scriptChange = GetScriptForDestination(coin_control.destChange);
-            } else { // no coin control: send change to newly generated address
-                // Note: We use a new key here to keep it from being obvious which side is the change.
-                //  The drawback is that by not reusing a previous key, the change may be lost if a
-                //  backup is restored, if the backup doesn't have the new private key for the change.
-                //  If we reused the old key, it would be possible to add code to look for and
-                //  rediscover unknown transactions that were written with keys of ours to recover
-                //  post-backup change.
-
-                // Reserve a new key pair from key pool. If it fails, provide a dummy
-                // destination in case we don't need change.
-                CTxDestination dest;
-                if (!reservedest.GetReservedDestination(dest, true)) {
-                    error = _("Transaction needs a change address, but we can't generate it. Please call keypoolrefill first.");
-                }
-                scriptChange = GetScriptForDestination(dest);
-                // A valid destination implies a change script (and
-                // vice-versa). An empty change script will abort later, if the
-                // change keypool ran out, but change is required.
-                CHECK_NONFATAL(IsValidDestination(dest) != scriptChange.empty());
-            }
-            CTxOut change_prototype_txout(0, scriptChange);
-            coin_selection_params.change_output_size = GetSerializeSize(change_prototype_txout);
-
-            // Get size of spending the change output
-            int change_spend_size = CalculateMaximumSignedInputSize(change_prototype_txout, this);
-            // If the wallet doesn't know how to sign change output, assume p2sh-p2wpkh
-            // as lower-bound to allow BnB to do it's thing
-            if (change_spend_size == -1) {
-                coin_selection_params.change_spend_size = DUMMY_NESTED_P2WPKH_INPUT_SIZE;
-            } else {
-                coin_selection_params.change_spend_size = (size_t)change_spend_size;
-            }
-
-            // Set discard feerate
-            coin_selection_params.m_discard_feerate = GetDiscardRate(*this);
-
-            // Get the fee rate to use effective values in coin selection
-            coin_selection_params.m_effective_feerate = GetMinimumFeeRate(*this, coin_control, &feeCalc);
-            // Do not, ever, assume that it's fine to change the fee rate if the user has explicitly
-            // provided one
-            if (coin_control.m_feerate && coin_selection_params.m_effective_feerate > *coin_control.m_feerate) {
-                error = strprintf(_("Fee rate (%s) is lower than the minimum fee rate setting (%s)"), coin_control.m_feerate->ToString(FeeEstimateMode::SAT_VB), coin_selection_params.m_effective_feerate.ToString(FeeEstimateMode::SAT_VB));
-                return false;
-            }
-            if (feeCalc.reason == FeeReason::FALLBACK && !m_allow_fallback_fee) {
-                // eventually allow a fallback fee
-                error = _("Fee estimation failed. Fallbackfee is disabled. Wait a few blocks or enable -fallbackfee.");
-                return false;
-            }
-
-            // Get long term estimate
-            CCoinControl cc_temp;
-            cc_temp.m_confirm_target = chain().estimateMaxBlocks();
-            coin_selection_params.m_long_term_feerate = GetMinimumFeeRate(*this, cc_temp, nullptr);
-
-            // Calculate the cost of change
-            // Cost of change is the cost of creating the change output + cost of spending the change output in the future.
-            // For creating the change output now, we use the effective feerate.
-            // For spending the change output in the future, we use the discard feerate for now.
-            // So cost of change = (change output size * effective feerate) + (size of spending change output * discard feerate)
-            coin_selection_params.m_change_fee = coin_selection_params.m_effective_feerate.GetFee(coin_selection_params.change_output_size);
-            coin_selection_params.m_cost_of_change = coin_selection_params.m_discard_feerate.GetFee(coin_selection_params.change_spend_size) + coin_selection_params.m_change_fee;
-
-            coin_selection_params.m_subtract_fee_outputs = nSubtractFeeFromAmount != 0; // If we are doing subtract fee from recipient, don't use effective values
-
-            // vouts to the payees
+            // Include the fee cost for outputs.
             if (!coin_selection_params.m_subtract_fee_outputs) {
-                coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
-            }
-            for (const auto& recipient : vecSend)
-            {
-                CTxOut txout(recipient.nAmount, recipient.scriptPubKey);
-
-                // Include the fee cost for outputs.
-                if (!coin_selection_params.m_subtract_fee_outputs) {
-                    coin_selection_params.tx_noinputs_size += ::GetSerializeSize(txout, PROTOCOL_VERSION);
-                }
-
-                if (IsDust(txout, chain().relayDustFee()))
-                {
-                    error = _("Transaction amount too small");
-                    return false;
-                }
-                txNew.vout.push_back(txout);
+                coin_selection_params.tx_noinputs_size += ::GetSerializeSize(txout, PROTOCOL_VERSION);
             }
 
-            // Include the fees for things that aren't inputs, excluding the change output
-            const CAmount not_input_fees = coin_selection_params.m_effective_feerate.GetFee(coin_selection_params.tx_noinputs_size);
-            CAmount nValueToSelect = nValue + not_input_fees;
-
-            // Choose coins to use
-            if (!SelectCoins(vAvailableCoins, /* nTargetValue */ nValueToSelect, coin_control, coin_selection_params, selection))
+            if (IsDust(txout, chain().relayDustFee()))
             {
-                error = _("Insufficient funds");
+                error = _("Transaction amount too small");
                 return false;
             }
-
-            // Always make a change output
-            // We will reduce the fee from this change output later, and remove the output if it is too small.
-            const CAmount change_and_fee = selection.GetSelectedValue() - nValue;
-            assert(change_and_fee >= 0);
-            CTxOut newTxOut(change_and_fee, scriptChange);
-
-            if (nChangePosInOut == -1)
-            {
-                // Insert change txn at random position:
-                nChangePosInOut = GetRandInt(txNew.vout.size()+1);
-            }
-            else if ((unsigned int)nChangePosInOut > txNew.vout.size())
-            {
-                error = _("Change index out of range");
-                return false;
-            }
-
-            assert(nChangePosInOut != -1);
-            auto change_position = txNew.vout.insert(txNew.vout.begin() + nChangePosInOut, newTxOut);
-
-            // Dummy fill vin for maximum size estimation
-            //
-            for (const auto& coin : selection.selected_inputs) {
-                txNew.vin.push_back(CTxIn(coin.outpoint,CScript()));
-            }
-
-            // Calculate the transaction fee
-            tx_sizes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
-            nBytes = tx_sizes.first;
-            if (nBytes < 0) {
-                error = _("Signing transaction failed");
-                return false;
-            }
-            nFeeRet = coin_selection_params.m_effective_feerate.GetFee(nBytes);
-
-            // Subtract fee from the change output if not subtrating it from recipient outputs
-            CAmount fee_needed = nFeeRet;
-            if (nSubtractFeeFromAmount == 0) {
-                change_position->nValue -= fee_needed;
-            }
-
-            // We want to drop the change to fees if:
-            // 1. The change output would be dust
-            // 2. The change is within the (almost) exact match window, i.e. it is less than or equal to the cost of the change output (cost_of_change)
-            CAmount change_amount = change_position->nValue;
-            if (IsDust(*change_position, coin_selection_params.m_discard_feerate) || change_amount <= coin_selection_params.m_cost_of_change)
-            {
-                nChangePosInOut = -1;
-                change_amount = 0;
-                txNew.vout.erase(change_position);
-
-                // Because we have dropped this change, the tx size and required fee will be different, so let's recalculate those
-                tx_sizes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
-                nBytes = tx_sizes.first;
-                fee_needed = coin_selection_params.m_effective_feerate.GetFee(nBytes);
-            }
-
-            // Update nFeeRet in case fee_needed changed due to dropping the change output
-            if (fee_needed <= change_and_fee - change_amount) {
-                nFeeRet = change_and_fee - change_amount;
-            }
-
-            // Reduce output values for subtractFeeFromAmount
-            if (nSubtractFeeFromAmount != 0) {
-                CAmount to_reduce = fee_needed + change_amount - change_and_fee;
-                int i = 0;
-                bool fFirst = true;
-                for (const auto& recipient : vecSend)
-                {
-                    if (i == nChangePosInOut) {
-                        ++i;
-                    }
-                    CTxOut& txout = txNew.vout[i];
-
-                    if (recipient.fSubtractFeeFromAmount)
-                    {
-                        txout.nValue -= to_reduce / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
-
-                        if (fFirst) // first receiver pays the remainder not divisible by output count
-                        {
-                            fFirst = false;
-                            txout.nValue -= to_reduce % nSubtractFeeFromAmount;
-                        }
-
-                        // Error if this output is reduced to be below dust
-                        if (IsDust(txout, chain().relayDustFee())) {
-                            if (txout.nValue < 0) {
-                                error = _("The transaction amount is too small to pay the fee");
-                            } else {
-                                error = _("The transaction amount is too small to send after the fee has been deducted");
-                            }
-                            return false;
-                        }
-                    }
-                    ++i;
-                }
-                nFeeRet = fee_needed;
-            }
-
-            // Give up if change keypool ran out and change is required
-            if (scriptChange.empty() && nChangePosInOut != -1) {
-                return false;
-            }
+            txNew.vout.push_back(txout);
         }
 
-        // Shuffle selected coins and fill in final vin
-        txNew.vin.clear();
-        std::vector<CInputCoin> selected_coins = selection.GetInputVector();
+        // Include the fees for things that aren't inputs, excluding the change output
+        const CAmount not_input_fees = coin_selection_params.m_effective_feerate.GetFee(coin_selection_params.tx_noinputs_size);
+        CAmount nValueToSelect = nValue + not_input_fees;
 
-        // Note how the sequence number is set to non-maxint so that
-        // the nLockTime set above actually works.
+        // Choose coins to use
+        if (!SelectCoins(vAvailableCoins, /* nTargetValue */ nValueToSelect, coin_control, coin_selection_params, selection))
+        {
+            error = _("Insufficient funds");
+            return false;
+        }
+
+        // Always make a change output
+        // We will reduce the fee from this change output later, and remove the output if it is too small.
+        const CAmount change_and_fee = selection.GetSelectedValue() - nValue;
+        assert(change_and_fee >= 0);
+        CTxOut newTxOut(change_and_fee, scriptChange);
+
+        if (nChangePosInOut == -1)
+        {
+            // Insert change txn at random position:
+            nChangePosInOut = GetRandInt(txNew.vout.size()+1);
+        }
+        else if ((unsigned int)nChangePosInOut > txNew.vout.size())
+        {
+            error = _("Change index out of range");
+            return false;
+        }
+
+        assert(nChangePosInOut != -1);
+        auto change_position = txNew.vout.insert(txNew.vout.begin() + nChangePosInOut, newTxOut);
+
+        // Dummy fill vin for maximum size estimation
         //
-        // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
-        // we use the highest possible value in that range (maxint-2)
-        // to avoid conflicting with other possible uses of nSequence,
-        // and in the spirit of "smallest possible change from prior
-        // behavior."
-        const uint32_t nSequence = coin_control.m_signal_bip125_rbf.value_or(m_signal_rbf) ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
-        for (const auto& coin : selected_coins) {
-            txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
+        for (const auto& coin : selection.selected_inputs) {
+            txNew.vin.push_back(CTxIn(coin.outpoint,CScript()));
         }
 
-        if (sign && !SignTransaction(txNew)) {
+        // Calculate the transaction fee
+        tx_sizes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
+        nBytes = tx_sizes.first;
+        if (nBytes < 0) {
             error = _("Signing transaction failed");
             return false;
         }
+        nFeeRet = coin_selection_params.m_effective_feerate.GetFee(nBytes);
 
-        // Return the constructed transaction data.
-        tx = MakeTransactionRef(std::move(txNew));
+        // Subtract fee from the change output if not subtrating it from recipient outputs
+        CAmount fee_needed = nFeeRet;
+        if (nSubtractFeeFromAmount == 0) {
+            change_position->nValue -= fee_needed;
+        }
 
-        // Limit size
-        if ((sign && GetTransactionWeight(*tx) > MAX_STANDARD_TX_WEIGHT) ||
-            (!sign && tx_sizes.second > MAX_STANDARD_TX_WEIGHT))
+        // We want to drop the change to fees if:
+        // 1. The change output would be dust
+        // 2. The change is within the (almost) exact match window, i.e. it is less than or equal to the cost of the change output (cost_of_change)
+        CAmount change_amount = change_position->nValue;
+        if (IsDust(*change_position, coin_selection_params.m_discard_feerate) || change_amount <= coin_selection_params.m_cost_of_change)
         {
-            error = _("Transaction too large");
+            nChangePosInOut = -1;
+            change_amount = 0;
+            txNew.vout.erase(change_position);
+
+            // Because we have dropped this change, the tx size and required fee will be different, so let's recalculate those
+            tx_sizes = CalculateMaximumSignedTxSize(CTransaction(txNew), this, coin_control.fAllowWatchOnly);
+            nBytes = tx_sizes.first;
+            fee_needed = coin_selection_params.m_effective_feerate.GetFee(nBytes);
+        }
+
+        // Update nFeeRet in case fee_needed changed due to dropping the change output
+        if (fee_needed <= change_and_fee - change_amount) {
+            nFeeRet = change_and_fee - change_amount;
+        }
+
+        // Reduce output values for subtractFeeFromAmount
+        if (nSubtractFeeFromAmount != 0) {
+            CAmount to_reduce = fee_needed + change_amount - change_and_fee;
+            int i = 0;
+            bool fFirst = true;
+            for (const auto& recipient : vecSend)
+            {
+                if (i == nChangePosInOut) {
+                    ++i;
+                }
+                CTxOut& txout = txNew.vout[i];
+
+                if (recipient.fSubtractFeeFromAmount)
+                {
+                    txout.nValue -= to_reduce / nSubtractFeeFromAmount; // Subtract fee equally from each selected recipient
+
+                    if (fFirst) // first receiver pays the remainder not divisible by output count
+                    {
+                        fFirst = false;
+                        txout.nValue -= to_reduce % nSubtractFeeFromAmount;
+                    }
+
+                    // Error if this output is reduced to be below dust
+                    if (IsDust(txout, chain().relayDustFee())) {
+                        if (txout.nValue < 0) {
+                            error = _("The transaction amount is too small to pay the fee");
+                        } else {
+                            error = _("The transaction amount is too small to send after the fee has been deducted");
+                        }
+                        return false;
+                    }
+                }
+                ++i;
+            }
+            nFeeRet = fee_needed;
+        }
+
+        // Give up if change keypool ran out and change is required
+        if (scriptChange.empty() && nChangePosInOut != -1) {
             return false;
         }
+    }
+
+    // Shuffle selected coins and fill in final vin
+    txNew.vin.clear();
+    std::vector<CInputCoin> selected_coins = selection.GetInputVector();
+
+    // Note how the sequence number is set to non-maxint so that
+    // the nLockTime set above actually works.
+    //
+    // BIP125 defines opt-in RBF as any nSequence < maxint-1, so
+    // we use the highest possible value in that range (maxint-2)
+    // to avoid conflicting with other possible uses of nSequence,
+    // and in the spirit of "smallest possible change from prior
+    // behavior."
+    const uint32_t nSequence = coin_control.m_signal_bip125_rbf.value_or(m_signal_rbf) ? MAX_BIP125_RBF_SEQUENCE : (CTxIn::SEQUENCE_FINAL - 1);
+    for (const auto& coin : selected_coins) {
+        txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
+    }
+
+    if (sign && !SignTransaction(txNew)) {
+        error = _("Signing transaction failed");
+        return false;
+    }
+
+    // Return the constructed transaction data.
+    tx = MakeTransactionRef(std::move(txNew));
+
+    // Limit size
+    if ((sign && GetTransactionWeight(*tx) > MAX_STANDARD_TX_WEIGHT) ||
+        (!sign && tx_sizes.second > MAX_STANDARD_TX_WEIGHT))
+    {
+        error = _("Transaction too large");
+        return false;
     }
 
     if (nFeeRet > m_default_max_tx_fee) {
