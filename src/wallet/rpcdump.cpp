@@ -1776,6 +1776,7 @@ RPCHelpMan listdescriptors()
                         {RPCResult::Type::NUM, "", "Range end inclusive"},
                     }},
                     {RPCResult::Type::NUM, "next", true, "The next index to generate addresses from; defined only for ranged descriptors"},
+                    {RPCResult::Type::STR_HEX, "id", "The ID for this descriptor. It is the SHA256 of the descriptor non-normalized descriptor string."},
                 }},
             }}
         }},
@@ -1822,6 +1823,7 @@ RPCHelpMan listdescriptors()
             spk.pushKV("range", range);
             spk.pushKV("next", wallet_descriptor.next_index);
         }
+        spk.pushKV("id", HexStr(spk_man->GetID()));
         descriptors.push_back(spk);
     }
 
