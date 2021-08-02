@@ -1874,7 +1874,49 @@ bool DescriptorScriptPubKeyMan::AddDescriptorKeyWithDB(WalletBatch& batch, const
     }
 }
 
-bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_key, OutputType addr_type, bool internal)
+static std::vector<uint32_t> DetermineDerivationPath(OutputType addr_type, bool internal)
+{
+    std::vector<uint32_t> path;
+
+    // Get the purpose path index
+    switch (addr_type) {
+    case OutputType::LEGACY: {
+        path.push_back(44 | BIP32_HARDENED_KEY_LIMIT);
+        break;
+    }
+    case OutputType::P2SH_SEGWIT: {
+        path.push_back(49 | BIP32_HARDENED_KEY_LIMIT);
+        break;
+    }
+    case OutputType::BECH32: {
+        path.push_back(84 | BIP32_HARDENED_KEY_LIMIT);
+        break;
+    }
+    case OutputType::BECH32M: {
+        path.push_back(86 | BIP32_HARDENED_KEY_LIMIT);
+        break;
+    }
+    } // no default case, so the compiler can warn about missing cases
+
+    // Mainnet derives at 0', testnet and regtest derive at 1'
+    if (Params().IsTestChain()) {
+        path.push_back(1 | BIP32_HARDENED_KEY_LIMIT);
+    } else {
+        path.push_back(0 | BIP32_HARDENED_KEY_LIMIT);
+    }
+
+    path.push_back(0 | BIP32_HARDENED_KEY_LIMIT);
+
+    if (internal) {
+        path.push_back(1);
+    } else {
+        path.push_back(0);
+    }
+
+    return path;
+}
+
+bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_key, OutputType addr_type, bool internal, std::optional<std::vector<uint32_t>> path_spec)
 {
     LOCK(cs_desc_man);
     assert(m_storage.IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS));
@@ -1893,34 +1935,37 @@ bool DescriptorScriptPubKeyMan::SetupDescriptorGeneration(const CExtKey& master_
     std::string desc_suffix = "/*)";
     switch (addr_type) {
     case OutputType::LEGACY: {
-        desc_prefix = "pkh(" + xpub + "/44'";
+        desc_prefix = "pkh(" + xpub;
         break;
     }
     case OutputType::P2SH_SEGWIT: {
-        desc_prefix = "sh(wpkh(" + xpub + "/49'";
+        desc_prefix = "sh(wpkh(" + xpub;
         desc_suffix += ")";
         break;
     }
     case OutputType::BECH32: {
-        desc_prefix = "wpkh(" + xpub + "/84'";
+        desc_prefix = "wpkh(" + xpub;
         break;
     }
     case OutputType::BECH32M: {
-        desc_prefix = "tr(" + xpub  + "/86'";
+        desc_prefix = "tr(" + xpub;
         break;
     }
     } // no default case, so the compiler can warn about missing cases
     assert(!desc_prefix.empty());
 
-    // Mainnet derives at 0', testnet and regtest derive at 1'
-    if (Params().IsTestChain()) {
-        desc_prefix += "/1'";
+    std::vector<uint32_t> path;
+    if (path_spec != std::nullopt) {
+        path = *path_spec;
     } else {
-        desc_prefix += "/0'";
+        path = DetermineDerivationPath(addr_type, internal);
     }
 
-    std::string internal_path = internal ? "/1" : "/0";
-    std::string desc_str = desc_prefix + "/0'" + internal_path + desc_suffix;
+    // Turn path into a string we can use in the descriptor
+    std::string path_str = FormatHDKeypath(path);
+
+    // Make the descriptor string
+    std::string desc_str = desc_prefix + path_str + desc_suffix;
 
     // Make the descriptor
     FlatSigningProvider keys;

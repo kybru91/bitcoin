@@ -579,7 +579,7 @@ public:
     bool IsHDEnabled() const override;
 
     //! Setup descriptors based on the given CExtkey
-    bool SetupDescriptorGeneration(const CExtKey& master_key, OutputType addr_type, bool internal);
+    bool SetupDescriptorGeneration(const CExtKey& master_key, OutputType addr_type, bool internal, std::optional<std::vector<uint32_t>> path = std::nullopt);
 
     /** Provide a descriptor at setup time
     * Returns false if already setup or setup fails, true if setup is successful
