@@ -185,6 +185,8 @@ public:
 
     /** Derive a private key, if private data is available in arg. */
     virtual bool GetPrivKey(int pos, const SigningProvider& arg, CKey& key) const = 0;
+
+    virtual void GetRootPubkey(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const = 0;
 };
 
 class OriginPubkeyProvider final : public PubkeyProvider
@@ -235,6 +237,10 @@ public:
     {
         return m_provider->GetPrivKey(pos, arg, key);
     }
+    void GetRootPubkey(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const override
+    {
+        m_provider->GetRootPubkey(pubkeys, ext_pubs);
+    }
 };
 
 /** An object representing a parsed constant public key in a descriptor. */
@@ -271,6 +277,10 @@ public:
     bool GetPrivKey(int pos, const SigningProvider& arg, CKey& key) const override
     {
         return arg.GetKey(m_pubkey.GetID(), key);
+    }
+    void GetRootPubkey(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const override
+    {
+        pubkeys.insert(m_pubkey);
     }
 };
 
@@ -480,6 +490,10 @@ public:
         key = extkey.key;
         return true;
     }
+    void GetRootPubkey(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const override
+    {
+        ext_pubs.insert(m_root_extkey);
+    }
 };
 
 /** Base class for all Descriptor implementations. */
@@ -658,6 +672,16 @@ public:
     }
 
     std::optional<OutputType> GetOutputType() const override { return std::nullopt; }
+
+    void GetPubkeys(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const override
+    {
+        for (const auto& p : m_pubkey_args) {
+            p->GetRootPubkey(pubkeys, ext_pubs);
+        }
+        for (const auto& arg : m_subdescriptor_args) {
+            arg->GetPubkeys(pubkeys, ext_pubs);
+        }
+    }
 };
 
 /** A parsed addr(A) descriptor. */

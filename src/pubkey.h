@@ -305,6 +305,11 @@ struct CExtPubKey {
         return !(a == b);
     }
 
+    friend bool operator<(const CExtPubKey &a, const CExtPubKey &b)
+    {
+        return a.pubkey < b.pubkey;
+    }
+
     void Encode(unsigned char code[BIP32_EXTKEY_SIZE]) const;
     void Decode(const unsigned char code[BIP32_EXTKEY_SIZE]);
     bool Derive(CExtPubKey& out, unsigned int nChild) const;

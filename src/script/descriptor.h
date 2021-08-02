@@ -146,6 +146,8 @@ struct Descriptor {
 
     /** @return The OutputType of the scriptPubKey(s) produced by this descriptor. Or nullopt if indeterminate (multiple or none) */
     virtual std::optional<OutputType> GetOutputType() const = 0;
+
+    virtual void GetPubkeys(std::set<CPubKey>& pubkeys, std::set<CExtPubKey>& ext_pubs) const = 0;
 };
 
 /** Parse a `descriptor` string. Included private keys are put in `out`.
