@@ -25,6 +25,14 @@ bool ParseHDKeypath(const std::string& keypath_str, std::vector<uint32_t>& keypa
         // Finds whether it is hardened
         uint32_t path = 0;
         size_t pos = item.find("'");
+        if (pos == std::string::npos) {
+            // Allow "h" as hardened indicator
+            pos = item.find("h");
+            if (pos == std::string::npos) {
+                // Allow "H" as hardened indicator
+                pos = item.find("H");
+            }
+        }
         if (pos != std::string::npos) {
             // The hardened tick can only be in the last index of the string
             if (pos != item.size() - 1) {
