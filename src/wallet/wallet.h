@@ -913,6 +913,9 @@ public:
 
     //! Add a descriptor to the wallet, return a ScriptPubKeyMan & associated output type
     ScriptPubKeyMan* AddWalletDescriptor(WalletDescriptor& desc, const FlatSigningProvider& signing_provider, const std::string& label, bool internal);
+
+    //! Add an already created ScriptPubKeyMan to m_spk_managers
+    void AddScriptPubKeyMan(std::unique_ptr<ScriptPubKeyMan> spk_man);
 };
 
 /**

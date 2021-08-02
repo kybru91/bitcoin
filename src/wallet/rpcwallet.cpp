@@ -4609,6 +4609,129 @@ static RPCHelpMan walletdisplayaddress()
 }
 #endif // ENABLE_EXTERNAL_SIGNER
 
+static RPCHelpMan generatedescriptor()
+{
+    return RPCHelpMan{"generatedescriptor",
+        "\nCreates and stores a new active ranged descriptor for the given address type in the wallet\n",
+        {
+            {"addresstype", RPCArg::Type::STR, RPCArg::Optional::NO, "The address type to make a descriptor for."},
+            {"donor_id", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED_NAMED_ARG, "ID of the single key descriptor whose master key will be used in the newly generated descriptor. If not provided, a new randomly generated master key will be used."},
+            {"path", RPCArg::Type::STR, RPCArg::Optional::OMITTED_NAMED_ARG, "BIP 32 derivation path from which the child keys will be derived. If not provided, a path will be used which matches BIPs 44/49/84/86"},
+            {"internal", RPCArg::Type::BOOL, RPCArg::Default{false}, "Whether the generated descriptor will be used for change addresses"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "desc", "The public descriptor that was generated and added to the wallet"},
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("generatedescriptor", "bech32m")
+            + HelpExampleCli("generatedescriptor", "bech32m")
+            + HelpExampleRpc("generatedescriptor", "bech32m")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return NullUniValue;
+
+    LOCK(pwallet->cs_wallet);
+
+    // This RPC only works on descriptor wallets with private keys
+    if (!pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "generatedescriptor only works on descriptor wallets");
+    }
+    if (pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "generatedescriptor only works on wallets with private keys");
+    }
+
+    EnsureWalletIsUnlocked(*pwallet);
+
+    // Parse address type
+    OutputType output_type;
+    if (!ParseOutputType(request.params[0].get_str(), output_type)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[0].get_str()));
+    }
+
+    // Figure out which master key to use
+    CExtKey master_key;
+    if (!request.params[1].isNull()) {
+        // Get the key of the specified descriptor
+        std::vector<unsigned char> id_bytes = ParseHexV(request.params[1], "donor_id");
+        uint256 donor_id(id_bytes);
+        auto spk_man = pwallet->GetScriptPubKeyMan(donor_id);
+        auto desc_spk_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man);
+        if (!desc_spk_man) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("%s does not refer to a known descriptor", HexStr(donor_id)));
+        }
+        if (!desc_spk_man->IsHDEnabled()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Descriptor with ID %s is not a ranged descriptor so it cannot be used as the master key donor", HexStr(donor_id)));
+        }
+        LOCK(desc_spk_man->cs_desc_man);
+
+        std::map<CKeyID, CKey> keys = desc_spk_man->GetKeys();
+        assert(keys.size());
+        if (keys.size() > 1) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Descriptor with ID %s has more than one master key", HexStr(donor_id)));
+        }
+        CKey privkey = keys.begin()->second;
+
+        std::set<CPubKey> pubkeys;
+        std::set<CExtPubKey> xpubs;
+        desc_spk_man->GetWalletDescriptor().descriptor->GetPubkeys(pubkeys, xpubs);
+        assert(pubkeys.size() == 0);
+        assert(xpubs.size() == 1);
+        CExtPubKey xpub = *xpubs.begin();
+
+        master_key.key = privkey;
+        master_key.nDepth = xpub.nDepth;
+        memcpy(master_key.vchFingerprint, xpub.vchFingerprint, 4);
+        master_key.nChild = xpub.nChild;
+        master_key.chaincode = xpub.chaincode;
+    } else {
+        // Or generate a new master key
+        CKey seed_key;
+        seed_key.MakeNewKey(true);
+        CPubKey seed = seed_key.GetPubKey();
+        assert(seed_key.VerifyPubKey(seed));
+        master_key.SetSeed(seed_key.begin(), seed_key.size());
+    }
+
+    // Parse the derivation path
+    std::optional<std::vector<uint32_t>> path;
+    if (!request.params[2].isNull()) {
+        std::string path_str = request.params[2].get_str();
+        path.emplace();
+        if (!ParseHDKeypath(path_str, *path)) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Unable to parse BIP 32 path %s", path_str));
+        }
+    }
+
+    // Parse internal
+    bool internal = request.params[3].isNull() ? false : request.params[3].get_bool();
+
+    // Make a DescriptorScriptPubKeyMan and generate the descriptor
+    auto spk_manager = std::unique_ptr<DescriptorScriptPubKeyMan>(new DescriptorScriptPubKeyMan(*pwallet));
+    if (!spk_manager->SetupDescriptorGeneration(master_key, output_type, internal, path)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Unable to generate a descriptor");
+    }
+    uint256 id = spk_manager->GetID();
+
+    std::string desc;
+    if (!spk_manager->GetDescriptorString(desc)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Unable to get descriptor string");
+    }
+
+    pwallet->AddScriptPubKeyMan(std::move(spk_manager));
+    pwallet->AddActiveScriptPubKeyMan(id, output_type, internal);
+
+    UniValue out(UniValue::VOBJ);
+    out.pushKV("desc", desc);
+    return out;
+},
+    };
+}
+
 RPCHelpMan abortrescan();
 RPCHelpMan dumpprivkey();
 RPCHelpMan importprivkey();
@@ -4639,6 +4762,7 @@ static const CRPCCommand commands[] =
     { "wallet",             &dumpprivkey,                    },
     { "wallet",             &dumpwallet,                     },
     { "wallet",             &encryptwallet,                  },
+    { "wallet",             &generatedescriptor,             },
     { "wallet",             &getaddressesbylabel,            },
     { "wallet",             &getaddressinfo,                 },
     { "wallet",             &getbalance,                     },

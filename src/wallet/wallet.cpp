@@ -3279,3 +3279,8 @@ ScriptPubKeyMan* CWallet::AddWalletDescriptor(WalletDescriptor& desc, const Flat
 
     return spk_man;
 }
+
+void CWallet::AddScriptPubKeyMan(std::unique_ptr<ScriptPubKeyMan> spk_man)
+{
+    m_spk_managers[spk_man->GetID()] = std::move(spk_man);
+}
