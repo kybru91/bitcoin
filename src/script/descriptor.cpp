@@ -508,12 +508,12 @@ public:
 /** Base class for all Descriptor implementations. */
 class DescriptorImpl : public Descriptor
 {
+protected:
     //! Public key arguments for this descriptor (size 1 for PK, PKH, WPKH; any size for Multisig).
     const std::vector<std::unique_ptr<PubkeyProvider>> m_pubkey_args;
     //! The string name of the descriptor function.
     const std::string m_name;
 
-protected:
     //! The sub-descriptor arguments (empty for everything but SH and WSH).
     //! In doc/descriptors.m this is referred to as SCRIPT expressions sh(SCRIPT)
     //! and wsh(SCRIPT), and distinct from KEY expressions and ADDR expressions.
@@ -681,6 +681,8 @@ public:
     }
 
     std::optional<OutputType> GetOutputType() const override { return std::nullopt; }
+
+    virtual std::unique_ptr<DescriptorImpl> Clone() const = 0;
 };
 
 /** A parsed addr(A) descriptor. */
@@ -699,6 +701,10 @@ public:
         return OutputTypeFromDestination(m_destination);
     }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<AddressDescriptor>(m_destination);
+    }
 };
 
 /** A parsed raw(H) descriptor. */
@@ -719,6 +725,10 @@ public:
         return OutputTypeFromDestination(dest);
     }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<RawDescriptor>(m_script);
+    }
 };
 
 /** A parsed pk(P) descriptor. */
@@ -739,6 +749,10 @@ protected:
 public:
     PKDescriptor(std::unique_ptr<PubkeyProvider> prov, bool xonly = false) : DescriptorImpl(Vector(std::move(prov)), "pk"), m_xonly(xonly) {}
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<PKDescriptor>(m_pubkey_args.at(0)->Clone(), m_xonly);
+    }
 };
 
 /** A parsed pkh(P) descriptor. */
@@ -755,6 +769,10 @@ public:
     PKHDescriptor(std::unique_ptr<PubkeyProvider> prov) : DescriptorImpl(Vector(std::move(prov)), "pkh") {}
     std::optional<OutputType> GetOutputType() const override { return OutputType::LEGACY; }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<PKHDescriptor>(m_pubkey_args.at(0)->Clone());
+    }
 };
 
 /** A parsed wpkh(P) descriptor. */
@@ -771,6 +789,10 @@ public:
     WPKHDescriptor(std::unique_ptr<PubkeyProvider> prov) : DescriptorImpl(Vector(std::move(prov)), "wpkh") {}
     std::optional<OutputType> GetOutputType() const override { return OutputType::BECH32; }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<WPKHDescriptor>(m_pubkey_args.at(0)->Clone());
+    }
 };
 
 /** A parsed combo(P) descriptor. */
@@ -795,6 +817,10 @@ protected:
 public:
     ComboDescriptor(std::unique_ptr<PubkeyProvider> prov) : DescriptorImpl(Vector(std::move(prov)), "combo") {}
     bool IsSingleType() const final { return false; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<ComboDescriptor>(m_pubkey_args.at(0)->Clone());
+    }
 };
 
 /** A parsed multi(...) or sortedmulti(...) descriptor */
@@ -815,6 +841,13 @@ protected:
 public:
     MultisigDescriptor(int threshold, std::vector<std::unique_ptr<PubkeyProvider>> providers, bool sorted = false) : DescriptorImpl(std::move(providers), sorted ? "sortedmulti" : "multi"), m_threshold(threshold), m_sorted(sorted) {}
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        std::vector<std::unique_ptr<PubkeyProvider>> providers;
+        providers.reserve(m_pubkey_args.size());
+        std::transform(m_pubkey_args.begin(), m_pubkey_args.end(), providers.begin(), [](const std::unique_ptr<PubkeyProvider>& p) { return p->Clone(); });
+        return std::make_unique<MultisigDescriptor>(m_threshold, std::move(providers), m_sorted);
+    }
 };
 
 /** A parsed (sorted)multi_a(...) descriptor. Always uses x-only pubkeys. */
@@ -839,6 +872,15 @@ protected:
 public:
     MultiADescriptor(int threshold, std::vector<std::unique_ptr<PubkeyProvider>> providers, bool sorted = false) : DescriptorImpl(std::move(providers), sorted ? "sortedmulti_a" : "multi_a"), m_threshold(threshold), m_sorted(sorted) {}
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        std::vector<std::unique_ptr<PubkeyProvider>> providers;
+        providers.reserve(m_pubkey_args.size());
+        for (const auto& arg : m_pubkey_args) {
+            providers.push_back(arg->Clone());
+        }
+        return std::make_unique<MultiADescriptor>(m_threshold, std::move(providers), m_sorted);
+    }
 };
 
 /** A parsed sh(...) descriptor. */
@@ -861,6 +903,10 @@ public:
         return OutputType::LEGACY;
     }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<SHDescriptor>(m_subdescriptor_args.at(0)->Clone());
+    }
 };
 
 /** A parsed wsh(...) descriptor. */
@@ -877,6 +923,10 @@ public:
     WSHDescriptor(std::unique_ptr<DescriptorImpl> desc) : DescriptorImpl({}, std::move(desc), "wsh") {}
     std::optional<OutputType> GetOutputType() const override { return OutputType::BECH32; }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        return std::make_unique<WSHDescriptor>(m_subdescriptor_args.at(0)->Clone());
+    }
 };
 
 /** A parsed tr(...) descriptor. */
@@ -930,6 +980,13 @@ public:
     }
     std::optional<OutputType> GetOutputType() const override { return OutputType::BECH32M; }
     bool IsSingleType() const final { return true; }
+    std::unique_ptr<DescriptorImpl> Clone() const override
+    {
+        std::vector<std::unique_ptr<DescriptorImpl>> subdescs;
+        subdescs.reserve(m_subdescriptor_args.size());
+        std::transform(m_subdescriptor_args.begin(), m_subdescriptor_args.end(), subdescs.begin(), [](const std::unique_ptr<DescriptorImpl>& d) { return d->Clone(); });
+        return std::make_unique<TRDescriptor>(m_pubkey_args.at(0)->Clone(), std::move(subdescs), m_depths);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////
