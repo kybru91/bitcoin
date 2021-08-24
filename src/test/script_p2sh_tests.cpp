@@ -40,8 +40,10 @@ Verify(const CScript& scriptSig, const CScript& scriptPubKey, bool fStrict, Scri
     txTo.vin[0].prevout.hash = txFrom.GetHash();
     txTo.vin[0].scriptSig = scriptSig;
     txTo.vout[0].nValue = 1;
+    PrecomputedTransactionData txdata;
+    txdata.Init(CTransaction(txTo), {txFrom.vout[0]}, true);
 
-    return VerifyScript(scriptSig, scriptPubKey, nullptr, fStrict ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE, MutableTransactionSignatureChecker(&txTo, 0, txFrom.vout[0].nValue, MissingDataBehavior::ASSERT_FAIL), &err);
+    return VerifyScript(scriptSig, scriptPubKey, nullptr, fStrict ? SCRIPT_VERIFY_P2SH : SCRIPT_VERIFY_NONE, MutableTransactionSignatureChecker(&txTo, 0, txFrom.vout[0].nValue, txdata, MissingDataBehavior::ASSERT_FAIL), &err);
 }
 
 
