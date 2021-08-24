@@ -420,7 +420,7 @@ struct Stacks
     Stacks() = delete;
     Stacks(const Stacks&) = delete;
     explicit Stacks(const SignatureData& data) : witness(data.scriptWitness.stack) {
-        EvalScript(script, data.scriptSig, SCRIPT_VERIFY_STRICTENC, BaseSignatureChecker(), SigVersion::BASE);
+        EvalScript(script, data.scriptSig, SCRIPT_VERIFY_STRICTENC, DUMMY_CHECKER, SigVersion::BASE);
     }
 };
 }
@@ -535,17 +535,6 @@ bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, 
     return SignSignature(provider, txout.scriptPubKey, txTo, nIn, txout.nValue, nHashType);
 }
 
-namespace {
-/** Dummy signature checker which accepts all signatures. */
-class DummySignatureChecker final : public BaseSignatureChecker
-{
-public:
-    DummySignatureChecker() {}
-    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override { return true; }
-    bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror) const override { return true; }
-};
-const DummySignatureChecker DUMMY_CHECKER;
-
 class DummySignatureCreator final : public BaseSignatureCreator {
 private:
     char m_r_len = 32;
@@ -574,8 +563,6 @@ public:
         return true;
     }
 };
-
-}
 
 const BaseSignatureCreator& DUMMY_SIGNATURE_CREATOR = DummySignatureCreator(32, 32);
 const BaseSignatureCreator& DUMMY_MAXIMUM_SIGNATURE_CREATOR = DummySignatureCreator(33, 32);
