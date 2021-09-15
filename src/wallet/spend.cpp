@@ -393,7 +393,7 @@ bool AttemptSelection(const CWallet& wallet, const CAmount& nTargetValue, const 
     auto srd_result = SelectCoinsSRD(positive_groups, srd_target);
     if (srd_result != std::nullopt) {
         const auto waste = GetSelectionWaste(srd_result->first, coin_selection_params.m_cost_of_change, srd_target, !coin_selection_params.m_subtract_fee_outputs);
-        results.emplace_back(std::make_tuple(waste, std::move(srd_result->first), srd_result->second));
+        results.emplace_back(std::make_tuple(waste, std::move(srd_result->first), srd_result->second, CSAlgo::SRD));
     }
 
     if (results.size() == 0) {
