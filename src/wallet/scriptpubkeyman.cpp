@@ -1687,7 +1687,7 @@ const std::unordered_set<CScript, SaltedSipHasher> LegacyDataSPKM::GetScriptPubK
     return spks;
 }
 
-std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
+std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
 {
     LOCK(cs_KeyStore);
     if (m_storage.IsLocked()) {
@@ -1765,7 +1765,6 @@ std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
         for (const CScript& spk : desc_spks) {
             size_t erased = spks.erase(spk);
             assert(erased == 1);
-            assert(IsMine(spk) == ISMINE_SPENDABLE);
         }
 
         out.desc_spkms.push_back(std::move(desc_spk_man));
@@ -1810,7 +1809,6 @@ std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
             for (const CScript& spk : desc_spks) {
                 size_t erased = spks.erase(spk);
                 assert(erased == 1);
-                assert(IsMine(spk) == ISMINE_SPENDABLE);
             }
 
             out.desc_spkms.push_back(std::move(desc_spk_man));
@@ -1866,7 +1864,6 @@ std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
         for (const CScript& desc_spk : desc_spks) {
             auto del_it = spks.find(desc_spk);
             assert(del_it != spks.end());
-            assert(IsMine(desc_spk) != ISMINE_NO);
             it = spks.erase(del_it);
         }
     }
@@ -1916,7 +1913,7 @@ std::optional<MigrationData> LegacyScriptPubKeyMan::MigrateToDescriptor()
     return out;
 }
 
-bool LegacyScriptPubKeyMan::DeleteRecords(bilingual_str& error)
+bool LegacyDataSPKM::DeleteRecords(bilingual_str& error)
 {
     LOCK(cs_KeyStore);
     WalletBatch batch(m_storage.GetDatabase());

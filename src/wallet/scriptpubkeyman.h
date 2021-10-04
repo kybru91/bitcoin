@@ -326,6 +326,11 @@ public:
 
     //! Fetches a pubkey from mapWatchKeys if it exists there
     bool GetWatchPubKey(const CKeyID &address, CPubKey &pubkey_out) const;
+
+    /** Get the DescriptScriptPubKeyMans that have the same scriptPubKeys as this LegacyScriptPubKeyMan */
+    std::optional<MigrationData> MigrateToDescriptor();
+    /** Delete all the records of this LegacyScriptPubKeyMan from disk */
+    bool DeleteRecords(bilingual_str& error);
 };
 
 class LegacyScriptPubKeyMan : public LegacyDataSPKM
@@ -512,11 +517,6 @@ public:
     const std::map<CKeyID, int64_t>& GetAllReserveKeys() const { return m_pool_key_to_index; }
 
     std::set<CKeyID> GetKeys() const override;
-
-    /** Get the DescriptScriptPubKeyMans that have the same scriptPubKeys as this LegacyScriptPubKeyMan */
-    std::optional<MigrationData> MigrateToDescriptor();
-    /** Delete all the records of this LegacyScriptPubKeyMan from disk */
-    bool DeleteRecords(bilingual_str& error);
 };
 
 /** Wraps a LegacyScriptPubKeyMan so that it can be returned in a new unique_ptr. Does not provide privkeys */
