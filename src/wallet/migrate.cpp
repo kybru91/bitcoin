@@ -621,3 +621,11 @@ void BerkeleyROBatch::CloseCursor()
 {
     m_cursor.reset();
 }
+
+std::unique_ptr<BerkeleyRODatabase> MakeBerkeleyRODatabase(const fs::path& path, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error)
+{
+    fs::path data_file = BDBDataFile(path);
+    std::unique_ptr<BerkeleyRODatabase> db = std::make_unique<BerkeleyRODatabase>(data_file);
+    status = DatabaseStatus::SUCCESS;
+    return db;
+}

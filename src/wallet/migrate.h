@@ -98,4 +98,7 @@ public:
     bool TxnAbort() override { return false; }
 };
 
+//! Return object giving access to Berkeley Read Only database at specified path.
+std::unique_ptr<BerkeleyRODatabase> MakeBerkeleyRODatabase(const fs::path& path, const DatabaseOptions& options, DatabaseStatus& status, bilingual_str& error);
+
 #endif // BITCOIN_WALLET_MIGRATE_H
