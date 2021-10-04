@@ -4852,17 +4852,25 @@ static RPCHelpMan migratewallet()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
-    std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+    std::shared_ptr<CWallet> wallet = GetWalletForJSONRPCRequest(request);
     if (!wallet) return NullUniValue;
-    CWallet* const pwallet = wallet.get();
 
-    EnsureWalletIsUnlocked(*pwallet);
+    EnsureWalletIsUnlocked(*wallet);
 
     WalletContext& context = EnsureWalletContext(request.context);
 
-    bilingual_str error;
     std::vector<bilingual_str> warnings;
-    if (!MigrateLegacyToDescriptor(*pwallet, context, error, warnings)) {
+
+    // Close the wallet
+    // MigrateLegacyToDescriptor will reopen the wallet in readonly mode
+    std::string name = wallet->GetName();
+    if (!RemoveWallet(context, wallet, std::nullopt, warnings)) {
+        throw JSONRPCError(RPC_MISC_ERROR, "Requested wallet already unloaded");
+    }
+    UnloadWallet(std::move(wallet));
+
+    bilingual_str error;
+    if (!MigrateLegacyToDescriptor(name, context, error, warnings)) {
         throw JSONRPCError(RPC_WALLET_ERROR, error.original);
     }
     return NullUniValue;
