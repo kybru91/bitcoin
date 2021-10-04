@@ -3559,9 +3559,17 @@ bool CWallet::ApplyMigrationData(MigrationData& data, bilingual_str& error, std:
     return true;
 }
 
-bool MigrateLegacyToDescriptor(CWallet& wallet, WalletContext& context, bilingual_str& error, std::vector<bilingual_str>& warnings)
+bool MigrateLegacyToDescriptor(std::string wallet_name, WalletContext& context, bilingual_str& error, std::vector<bilingual_str>& warnings)
 {
-    LOCK(wallet.cs_wallet);
+    // Reopen the wallet with BerkeleyRODatabase as the db backend
+    DatabaseOptions options;
+    DatabaseStatus status;
+    options.require_existing = true;
+    options.require_format = DatabaseFormat::BERKELEY_RO;
+    std::shared_ptr<CWallet> wallet = LoadWallet(context, wallet_name, std::nullopt, options, status, error, warnings);
+    assert(wallet);
+
+    LOCK(wallet->cs_wallet);
 
     // First change to using SQLite
 
@@ -3571,14 +3579,14 @@ bool MigrateLegacyToDescriptor(CWallet& wallet, WalletContext& context, bilingua
     {
         LOCK(context.wallets_mutex);
         std::vector<std::shared_ptr<CWallet>>::iterator i = std::find_if(context.wallets.begin(), context.wallets.end(), [&wallet](std::shared_ptr<CWallet> w) {
-                return w.get() == &wallet;
+                return w == wallet;
             });
         assert(i != context.wallets.end());
         this_wallet = *i;
         context.wallets.erase(i);
     }
     // Now do the database stuff
-    if (!wallet.MigrateToSQLite(error ,warnings)) return false;
+    if (!wallet->MigrateToSQLite(error ,warnings)) return false;
     // Put the wallet back in vpwallets because we are now done with messing with m_database
     {
         LOCK(context.wallets_mutex);
@@ -3586,7 +3594,7 @@ bool MigrateLegacyToDescriptor(CWallet& wallet, WalletContext& context, bilingua
     }
 
     // Then get all of the descriptors from the legacy wallet
-    std::optional<MigrationData> data = wallet.GetDescriptorsForLegacy(error);
+    std::optional<MigrationData> data = wallet->GetDescriptorsForLegacy(error);
     if (data == std::nullopt) return false;
 
     // Create the watchonly and solvable wallets if necessary
@@ -3597,17 +3605,17 @@ bool MigrateLegacyToDescriptor(CWallet& wallet, WalletContext& context, bilingua
 
         // Make the wallets
         options.create_flags = WALLET_FLAG_DISABLE_PRIVATE_KEYS | WALLET_FLAG_BLANK_WALLET | WALLET_FLAG_DESCRIPTORS;
-        if (wallet.IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE)) {
+        if (wallet->IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE)) {
             options.create_flags |= WALLET_FLAG_AVOID_REUSE;
         }
-        if (wallet.IsWalletFlagSet(WALLET_FLAG_KEY_ORIGIN_METADATA)) {
+        if (wallet->IsWalletFlagSet(WALLET_FLAG_KEY_ORIGIN_METADATA)) {
             options.create_flags |= WALLET_FLAG_KEY_ORIGIN_METADATA;
         }
         if (data->watch_descs.size() > 0) {
-            wallet.WalletLogPrintf("Making a new watchonly wallet containing the watched scripts\n");
+            wallet->WalletLogPrintf("Making a new watchonly wallet containing the watched scripts\n");
 
             DatabaseStatus status;
-            data->watchonly_wallet = CreateWallet(context, wallet.GetName() + "_watchonly", std::nullopt, options, status, error, warnings);
+            data->watchonly_wallet = CreateWallet(context, wallet->GetName() + "_watchonly", std::nullopt, options, status, error, warnings);
             if (status != DatabaseStatus::SUCCESS) {
                 error = _("Error: Failed to create new watchonly wallet");
                 return false;
@@ -3629,10 +3637,10 @@ bool MigrateLegacyToDescriptor(CWallet& wallet, WalletContext& context, bilingua
             }
         }
         if (data->solvable_descs.size() > 0) {
-            wallet.WalletLogPrintf("Making a new watchonly wallet containing the unwatched solvable scripts\n");
+            wallet->WalletLogPrintf("Making a new watchonly wallet containing the unwatched solvable scripts\n");
 
             DatabaseStatus status;
-            data->solvable_wallet = CreateWallet(context, wallet.GetName() + "_solvables", std::nullopt, options, status, error, warnings);
+            data->solvable_wallet = CreateWallet(context, wallet->GetName() + "_solvables", std::nullopt, options, status, error, warnings);
             if (status != DatabaseStatus::SUCCESS) {
                 error = _("Error: Failed to create new watchonly wallet");
                 return false;
@@ -3656,6 +3664,6 @@ bool MigrateLegacyToDescriptor(CWallet& wallet, WalletContext& context, bilingua
     }
 
     // Add the descriptors to wallet, remove LegacyScriptPubKeyMan, and cleanup txs and address book data
-    wallet.ApplyMigrationData(*data, error, warnings);
+    wallet->ApplyMigrationData(*data, error, warnings);
     return true;
 }
