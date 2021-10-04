@@ -614,6 +614,14 @@ public:
     int GetType() const          { return nType; }
     int GetVersion() const       { return nVersion; }
 
+    void seek(int64_t offset, int origin)
+    {
+        if (!file)
+            throw std::ios_base::failure("CAutoFile::read: file handle is nullptr");
+        if (fseek(file, offset, origin) != 0)
+            throw std::ios_base::failure(feof(file) ? "CAutoFile::seek: end of file" : "CAutoFile::seek: fseek failed");
+    }
+
     void read(char* pch, size_t nSize)
     {
         if (!file)
