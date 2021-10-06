@@ -3,6 +3,8 @@
 
 #include <wallet/migrate.h>
 
+#include <logging.h>
+
 void BerkeleyRODatabase::Open()
 {
 }
@@ -14,7 +16,25 @@ std::unique_ptr<DatabaseBatch> BerkeleyRODatabase::MakeBatch(bool flush_on_close
 
 bool BerkeleyRODatabase::Backup(const std::string& dest) const
 {
-    return false;
+    fs::path src(m_filepath);
+    fs::path dst(fs::PathFromString(dest));
+
+    if (fs::is_directory(dst)) {
+        dst = BDBDataFile(dst);
+    }
+    try {
+        if (fs::equivalent(src, dst)) {
+            LogPrintf("cannot backup to wallet source file %s\n", fs::PathToString(dst));
+            return false;
+        }
+
+        fs::copy_file(src, dst, fs::copy_option::overwrite_if_exists);
+        LogPrintf("copied %s to %s\n", fs::PathToString(m_filepath), fs::PathToString(dst));
+        return true;
+    } catch (const fs::filesystem_error& e) {
+        LogPrintf("error copying %s to %s - %s\n", fs::PathToString(m_filepath), fs::PathToString(dst), fsbridge::get_filesystem_error_message(e));
+        return false;
+    }
 }
 
 bool BerkeleyROBatch::ReadKey(CDataStream&& key, CDataStream& value)
