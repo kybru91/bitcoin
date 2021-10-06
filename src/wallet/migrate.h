@@ -26,6 +26,8 @@ public:
     }
     ~BerkeleyRODatabase() {};
 
+    std::map<std::vector<unsigned char>, std::vector<unsigned char>> m_records;
+
     /** Open the database if it is not already opened. */
     void Open() override;
 
@@ -71,6 +73,7 @@ class BerkeleyROBatch : public DatabaseBatch
 {
 private:
     const BerkeleyRODatabase& m_database;
+    std::optional<std::map<std::vector<unsigned char>, std::vector<unsigned char>>::const_iterator> m_cursor{};
 
     bool ReadKey(CDataStream&& key, CDataStream& value) override;
     bool WriteKey(CDataStream&& key, CDataStream&& value, bool overwrite=true) override { return true; }

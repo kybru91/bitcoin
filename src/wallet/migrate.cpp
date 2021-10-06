@@ -19,24 +19,47 @@ bool BerkeleyRODatabase::Backup(const std::string& dest) const
 
 bool BerkeleyROBatch::ReadKey(CDataStream&& key, CDataStream& value)
 {
-    return false;
+    std::vector<unsigned char> vkey(key.begin(), key.end());
+    if (m_database.m_records.count(vkey) == 0) {
+        return false;
+    }
+    auto val = m_database.m_records.at(vkey);
+    value.clear();
+    value.insert(value.begin(), val.begin(), val.end());
+    return true;
 }
 
 bool BerkeleyROBatch::HasKey(CDataStream&& key)
 {
-    return false;
+    std::vector<unsigned char> vkey(key.begin(), key.end());
+    return m_database.m_records.count(vkey) > 0;
 }
 
 bool BerkeleyROBatch::StartCursor()
 {
-    return false;
+    assert(m_cursor == std::nullopt);
+    m_cursor.emplace(m_database.m_records.begin());
+    return true;
 }
 
 bool BerkeleyROBatch::ReadAtCursor(CDataStream& ssKey, CDataStream& ssValue, bool& complete)
 {
-    return false;
+    if (m_cursor == std::nullopt) {
+        return false;
+    }
+    assert(m_cursor != std::nullopt);
+    complete = false;
+    ssKey.insert(ssKey.begin(), (*m_cursor)->first.begin(), (*m_cursor)->first.end());
+    ssValue.insert(ssValue.begin(), (*m_cursor)->second.begin(), (*m_cursor)->second.end());
+    (*m_cursor)++;
+    if (m_cursor == m_database.m_records.end()) {
+        complete = true;
+        m_cursor.reset();
+    }
+    return true;
 }
 
 void BerkeleyROBatch::CloseCursor()
 {
+    m_cursor.reset();
 }
