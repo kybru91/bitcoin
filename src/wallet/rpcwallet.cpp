@@ -4844,7 +4844,9 @@ static RPCHelpMan migratewallet()
     return RPCHelpMan{"migratewallet",
         "\nMigrate the wallet to a descriptor wallet.\n"
         "A new wallet backup will need to be made.",
-        {},
+        {
+            {"wallet_name", RPCArg::Type::STR, RPCArg::DefaultHint{"the wallet name from the RPC endpoint"}, "The name of the wallet to migrate. If provided both here and in the RPC endpoint, the two must be identical."},
+        },
         RPCResult{RPCResult::Type::NONE, "", ""},
         RPCExamples{
             HelpExampleCli("migratewallet", "")
@@ -4852,25 +4854,31 @@ static RPCHelpMan migratewallet()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
-    std::shared_ptr<CWallet> wallet = GetWalletForJSONRPCRequest(request);
-    if (!wallet) return NullUniValue;
-
-    EnsureWalletIsUnlocked(*wallet);
+    std::string wallet_name;
+    if (GetWalletNameFromJSONRPCRequest(request, wallet_name)) {
+        if (!(request.params[0].isNull() || request.params[0].get_str() == wallet_name)) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "RPC endpoint wallet and wallet_name parameter specify different wallets");
+        }
+    } else {
+        wallet_name = request.params[0].get_str();
+    }
 
     WalletContext& context = EnsureWalletContext(request.context);
+    std::shared_ptr<CWallet> wallet = GetWallet(context, wallet_name);
 
     std::vector<bilingual_str> warnings;
 
-    // Close the wallet
-    // MigrateLegacyToDescriptor will reopen the wallet in readonly mode
-    std::string name = wallet->GetName();
-    if (!RemoveWallet(context, wallet, std::nullopt, warnings)) {
-        throw JSONRPCError(RPC_MISC_ERROR, "Requested wallet already unloaded");
+    if (wallet) {
+        // Close the wallet
+        // MigrateLegacyToDescriptor will reopen the wallet in readonly mode
+        if (!RemoveWallet(context, wallet, std::nullopt, warnings)) {
+            throw JSONRPCError(RPC_MISC_ERROR, "Requested wallet already unloaded");
+        }
+        UnloadWallet(std::move(wallet));
     }
-    UnloadWallet(std::move(wallet));
 
     bilingual_str error;
-    if (!MigrateLegacyToDescriptor(name, context, error, warnings)) {
+    if (!MigrateLegacyToDescriptor(wallet_name, context, error, warnings)) {
         throw JSONRPCError(RPC_WALLET_ERROR, error.original);
     }
     return NullUniValue;
