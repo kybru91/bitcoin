@@ -6,7 +6,6 @@
 #include <util/system.h>
 #include <util/translation.h>
 #include <wallet/dump.h>
-#include <wallet/salvage.h>
 #include <wallet/wallet.h>
 #include <wallet/walletutil.h>
 
@@ -147,24 +146,6 @@ bool ExecuteWalletToolFunc(const ArgsManager& args, const std::string& command)
         if (!wallet_instance) return false;
         WalletShowInfo(wallet_instance.get());
         wallet_instance->Close();
-    } else if (command == "salvage") {
-#ifdef USE_BDB
-        bilingual_str error;
-        std::vector<bilingual_str> warnings;
-        bool ret = RecoverDatabaseFile(path, error, warnings);
-        if (!ret) {
-            for (const auto& warning : warnings) {
-                tfm::format(std::cerr, "%s\n", warning.original);
-            }
-            if (!error.empty()) {
-                tfm::format(std::cerr, "%s\n", error.original);
-            }
-        }
-        return ret;
-#else
-        tfm::format(std::cerr, "Salvage command is not available as BDB support is not compiled");
-        return false;
-#endif
     } else if (command == "dump") {
         DatabaseOptions options;
         options.require_existing = true;

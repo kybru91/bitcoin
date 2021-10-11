@@ -2790,7 +2790,7 @@ static RPCHelpMan createwallet()
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
     WalletContext& context = EnsureWalletContext(request.context);
-    uint64_t flags = 0;
+    uint64_t flags = WALLET_FLAG_DESCRIPTORS;
     if (!request.params[1].isNull() && request.params[1].get_bool()) {
         flags |= WALLET_FLAG_DISABLE_PRIVATE_KEYS;
     }
@@ -2823,12 +2823,6 @@ static RPCHelpMan createwallet()
         throw JSONRPCError(RPC_WALLET_ERROR, "Compiled without external signing support (required for external signing)");
 #endif
     }
-
-#ifndef USE_BDB
-    if (!(flags & WALLET_FLAG_DESCRIPTORS)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Compiled without bdb support (required for legacy wallets)");
-    }
-#endif
 
     DatabaseOptions options;
     DatabaseStatus status;

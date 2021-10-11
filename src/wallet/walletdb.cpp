@@ -14,9 +14,6 @@
 #include <util/system.h>
 #include <util/time.h>
 #include <util/translation.h>
-#ifdef USE_BDB
-#include <wallet/bdb.h>
-#endif
 #include <wallet/migrate.h>
 #include <wallet/sqlite.h>
 #include <wallet/wallet.h>

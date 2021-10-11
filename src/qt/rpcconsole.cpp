@@ -27,9 +27,6 @@
 #include <univalue.h>
 
 #ifdef ENABLE_WALLET
-#ifdef USE_BDB
-#include <wallet/bdb.h>
-#endif
 #include <wallet/db.h>
 #include <wallet/wallet.h>
 #endif

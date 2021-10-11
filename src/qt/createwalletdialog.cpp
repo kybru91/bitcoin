@@ -86,10 +86,8 @@ CreateWalletDialog::CreateWalletDialog(QWidget* parent) :
         }
     });
 
-#ifndef USE_BDB
-        ui->descriptor_checkbox->setEnabled(false);
-        ui->descriptor_checkbox->setChecked(true);
-#endif
+    ui->descriptor_checkbox->setEnabled(false);
+    ui->descriptor_checkbox->setChecked(true);
 
 #ifndef ENABLE_EXTERNAL_SIGNER
         //: "External signing" means using devices such as hardware wallets.

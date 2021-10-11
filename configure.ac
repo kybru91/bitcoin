@@ -131,12 +131,6 @@ AC_ARG_WITH([sqlite],
   [use_sqlite=$withval],
   [use_sqlite=auto])
 
-AC_ARG_WITH([bdb],
-  [AS_HELP_STRING([--without-bdb],
-  [disable bdb wallet support (default is enabled if wallet is enabled)])],
-  [use_bdb=$withval],
-  [use_bdb=auto])
-
 AC_ARG_ENABLE([ebpf],
   [AS_HELP_STRING([--enable-ebpf],
   [enable eBPF tracing (default is yes if sys/sdt.h is found)])],
@@ -670,13 +664,6 @@ case $host in
          dnl Homebrew where each one is located, then adjust paths accordingly.
          dnl It's safe to add these paths even if the functionality is disabled by
          dnl the user (--without-wallet or --without-gui for example).
-
-         if test "x$use_bdb" != xno && $BREW list --versions berkeley-db4 >/dev/null && test "x$BDB_CFLAGS" = "x" && test "x$BDB_LIBS" = "x"; then
-           bdb_prefix=$($BREW --prefix berkeley-db4 2>/dev/null)
-           dnl This must precede the call to BITCOIN_FIND_BDB48 below.
-           BDB_CFLAGS="-I$bdb_prefix/include"
-           BDB_LIBS="-L$bdb_prefix/lib -ldb_cxx-4.8"
-         fi
 
          if test "x$use_sqlite" != xno && $BREW list --versions sqlite3 >/dev/null; then
            export PKG_CONFIG_PATH="$($BREW --prefix sqlite3 2>/dev/null)/lib/pkgconfig:$PKG_CONFIG_PATH"
@@ -1301,30 +1288,21 @@ else
 fi
 
 if test x$enable_wallet != xno; then
-    dnl Check for libdb_cxx only if wallet enabled
-    if test "x$use_bdb" != "xno"; then
-      BITCOIN_FIND_BDB48
-      if test x$suppress_external_warnings != xno ; then
-        BDB_CPPFLAGS=SUPPRESS_WARNINGS($BDB_CPPFLAGS)
-      fi
-    fi
-
     dnl Check for sqlite3
-    if test "x$use_sqlite" != "xno"; then
-      PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.7.17], [have_sqlite=yes], [have_sqlite=no])
-    fi
-    if test "x$have_sqlite" = "xno"; then
-        AC_MSG_ERROR([sqlite missing, ]AC_PACKAGE_NAME[ requires this library for wallet functionality (--disable-wallet to disable wallet functionality)])
-    fi
-    use_sqlite=yes
-    AC_MSG_RESULT([$use_sqlite])
-
-    dnl Disable wallet if both --without-bdb and --without-sqlite
-    if test "x$use_bdb$use_sqlite" = "xnono"; then
+    if test "x$use_sqlite" = "xno"; then
         if test "x$enable_wallet" = "xyes"; then
-            AC_MSG_ERROR([wallet functionality requested but no BDB or SQLite support available.])
+            AC_MSG_ERROR([wallet functionality requested but no SQLite support available.])
         fi
         enable_wallet=no
+    fi
+
+    if test "x$use_sqlite" != "xno"; then
+      PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.7.17], [have_sqlite=yes], [have_sqlite=no])
+        if test "x$have_sqlite" = "xno"; then
+            AC_MSG_ERROR([sqlite missing, ]AC_PACKAGE_NAME[ requires this library for wallet functionality (--disable-wallet to disable wallet functionality)])
+        fi
+        use_sqlite=yes
+        AC_MSG_RESULT([$use_sqlite])
     fi
 fi
 
@@ -1772,7 +1750,6 @@ AM_CONDITIONAL([BUILD_DARWIN], [test x$BUILD_OS = xdarwin])
 AM_CONDITIONAL([TARGET_LINUX], [test x$TARGET_OS = xlinux])
 AM_CONDITIONAL([TARGET_WINDOWS], [test x$TARGET_OS = xwindows])
 AM_CONDITIONAL([ENABLE_WALLET],[test x$enable_wallet = xyes])
-AM_CONDITIONAL([USE_BDB], [test "x$use_bdb" = "xyes"])
 AM_CONDITIONAL([ENABLE_TRACING],[test x$have_sdt = xyes])
 AM_CONDITIONAL([ENABLE_TESTS],[test x$BUILD_TEST = xyes])
 AM_CONDITIONAL([ENABLE_FUZZ],[test x$enable_fuzz = xyes])
@@ -1841,7 +1818,6 @@ AC_SUBST(AVX2_CXXFLAGS)
 AC_SUBST(SHANI_CXXFLAGS)
 AC_SUBST(ARM_CRC_CXXFLAGS)
 AC_SUBST(LIBTOOL_APP_LDFLAGS)
-AC_SUBST(USE_BDB)
 AC_SUBST(ENABLE_EXTERNAL_SIGNER)
 AC_SUBST(USE_UPNP)
 AC_SUBST(USE_QRCODE)
@@ -1926,7 +1902,6 @@ echo "  with libs       = $build_bitcoin_libs"
 echo "  with wallet     = $enable_wallet"
 if test "x$enable_wallet" != "xno"; then
     echo "    with sqlite   = $use_sqlite"
-    echo "    with bdb      = $use_bdb"
 fi
 echo "  with gui / qt   = $bitcoin_enable_qt"
 if test x$bitcoin_enable_qt != xno; then
