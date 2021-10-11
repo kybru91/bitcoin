@@ -804,6 +804,11 @@ DBErrors WalletBatch::LoadWallet(CWallet* pwallet)
                 pwallet->WalletLogPrintf("Error reading wallet database: Unknown non-tolerable wallet flags found\n");
                 return DBErrors::CORRUPT;
             }
+            // All wallets must be descriptor wallets unless opened with a bdb_ro db
+            // bdb_ro is only used for legacy to descriptor migration.
+            if (m_database.Format() != "bdb_ro" && !pwallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                return DBErrors::LEGACY_WALLET;
+            }
         }
 
 #ifndef ENABLE_EXTERNAL_SIGNER

@@ -48,7 +48,8 @@ enum class DBErrors
     TOO_NEW,
     LOAD_FAIL,
     NEED_REWRITE,
-    NEED_RESCAN
+    NEED_RESCAN,
+    LEGACY_WALLET,
 };
 
 namespace DBKeys {
