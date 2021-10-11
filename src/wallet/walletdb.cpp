@@ -1189,9 +1189,6 @@ std::unique_ptr<WalletDatabase> MakeDatabase(const fs::path& path, const Databas
 #ifdef USE_SQLITE
         format = DatabaseFormat::SQLITE;
 #endif
-#ifdef USE_BDB
-        format = DatabaseFormat::BERKELEY;
-#endif
     }
 
     if (format == DatabaseFormat::SQLITE) {
@@ -1207,10 +1204,7 @@ std::unique_ptr<WalletDatabase> MakeDatabase(const fs::path& path, const Databas
         return MakeBerkeleyRODatabase(path, options, status, error);
     }
 
-#ifdef USE_BDB
-    return MakeBerkeleyDatabase(path, options, status, error);
-#endif
-    error = Untranslated(strprintf("Failed to open database path '%s'. Build does not support Berkeley DB database format.", fs::PathToString(path)));
+    error = Untranslated(strprintf("Failed to open database path '%s'. The wallet appears to be a Legacy wallet, please use the wallet migration tool (migratewallet RPC).", fs::PathToString(path)));
     status = DatabaseStatus::FAILED_BAD_FORMAT;
     return nullptr;
 }
