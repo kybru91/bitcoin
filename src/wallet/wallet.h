@@ -941,8 +941,9 @@ bool RemoveWalletSetting(interfaces::Chain& chain, const std::string& wallet_nam
 
 bool DummySignInput(const SigningProvider& provider, CTxIn &tx_in, const CTxOut &txout, bool use_max_sig);
 
+bool MigrateLegacyToDescriptorInternal(std::shared_ptr<CWallet>, WalletContext& context, bilingual_str& error, std::vector<bilingual_str>& warnings);
 //! Do all steps to migrate a legacy wallet to a descriptor wallet
 //! The wallet must not be loaded. This function will reload it in read only mode.
-bool MigrateLegacyToDescriptor(std::string wallet_name, WalletContext& context, bilingual_str& error, std::vector<bilingual_str>& warnings);
+bool MigrateLegacyToDescriptor(std::string wallet_name, WalletContext& context, SecureString passphrase, bilingual_str& error, std::vector<bilingual_str>& warnings);
 
 #endif // BITCOIN_WALLET_WALLET_H

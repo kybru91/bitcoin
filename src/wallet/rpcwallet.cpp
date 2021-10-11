@@ -4846,6 +4846,7 @@ static RPCHelpMan migratewallet()
         "A new wallet backup will need to be made.",
         {
             {"wallet_name", RPCArg::Type::STR, RPCArg::DefaultHint{"the wallet name from the RPC endpoint"}, "The name of the wallet to migrate. If provided both here and in the RPC endpoint, the two must be identical."},
+            {"passphrase", RPCArg::Type::STR, RPCArg::Optional::OMITTED_NAMED_ARG, "The wallet passphrase"},
         },
         RPCResult{RPCResult::Type::NONE, "", ""},
         RPCExamples{
@@ -4877,8 +4878,15 @@ static RPCHelpMan migratewallet()
         UnloadWallet(std::move(wallet));
     }
 
+    // Note that the walletpassphrase is stored in request.params[1] which is not mlock()ed
+    SecureString wallet_pass;
+    wallet_pass.reserve(100);
+    // TODO: get rid of this .c_str() by implementing SecureString::operator=(std::string)
+    // Alternately, find a way to make request.params[0] mlock()'d to begin with.
+    wallet_pass = request.params[1].isNull() ? "" : request.params[1].get_str().c_str();
+
     bilingual_str error;
-    if (!MigrateLegacyToDescriptor(wallet_name, context, error, warnings)) {
+    if (!MigrateLegacyToDescriptor(wallet_name, context, wallet_pass, error, warnings)) {
         throw JSONRPCError(RPC_WALLET_ERROR, error.original);
     }
     return NullUniValue;

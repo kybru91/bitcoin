@@ -3582,7 +3582,7 @@ bool CWallet::ApplyMigrationData(MigrationData& data, bilingual_str& error, std:
     return true;
 }
 
-bool MigrateLegacyToDescriptor(std::string wallet_name, WalletContext& context, bilingual_str& error, std::vector<bilingual_str>& warnings)
+bool MigrateLegacyToDescriptor(std::string wallet_name, WalletContext& context, SecureString passphrase, bilingual_str& error, std::vector<bilingual_str>& warnings)
 {
     // Reopen the wallet with BerkeleyRODatabase as the db backend
     DatabaseOptions options;
@@ -3594,6 +3594,35 @@ bool MigrateLegacyToDescriptor(std::string wallet_name, WalletContext& context, 
 
     LOCK(wallet->cs_wallet);
 
+    // Make sure the wallet is unlocked
+    if (wallet->IsCrypted()) {
+        if (passphrase.empty()) {
+            error = _("Wallet is encrypted but no passphrase was provided to unlock it for migration");
+            return false;
+        }
+        if (!wallet->Unlock(passphrase)) {
+            error = _("Incorrect passphrase provided");
+            return false;
+        }
+    }
+
+    if (!MigrateLegacyToDescriptorInternal(wallet, context, error, warnings)) {
+        // Close the wallet
+        RemoveWallet(context, wallet, std::nullopt, warnings);
+        UnloadWallet(std::move(wallet));
+        return false;
+    }
+
+    // Lock the wallet
+    if (wallet->IsCrypted()) {
+        wallet->Lock();
+    }
+
+    return true;
+}
+
+bool MigrateLegacyToDescriptorInternal(std::shared_ptr<CWallet> wallet, WalletContext& context, bilingual_str& error, std::vector<bilingual_str>& warnings)
+{
     // First change to using SQLite
 
     // Remove this wallet from the list of wallets while we mess with the database
