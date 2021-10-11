@@ -127,7 +127,7 @@ AC_ARG_ENABLE([wallet],
 
 AC_ARG_WITH([sqlite],
   [AS_HELP_STRING([--with-sqlite=yes|no|auto],
-  [enable sqlite wallet support (default: auto, i.e., enabled if wallet is enabled and sqlite is found)])],
+  [enable sqlite wallet support (default: auto, i.e., enabled if wallet is enabled)])],
   [use_sqlite=$withval],
   [use_sqlite=auto])
 
@@ -1313,20 +1313,10 @@ if test x$enable_wallet != xno; then
     if test "x$use_sqlite" != "xno"; then
       PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.7.17], [have_sqlite=yes], [have_sqlite=no])
     fi
-    AC_MSG_CHECKING([whether to build wallet with support for sqlite])
-    if test "x$use_sqlite" = "xno"; then
-      use_sqlite=no
-    elif test "x$have_sqlite" = "xno"; then
-      if test "x$use_sqlite" = "xyes"; then
-        AC_MSG_ERROR([sqlite support requested but cannot be built. Use --without-sqlite])
-      fi
-      use_sqlite=no
-    else
-      if test x$use_sqlite != xno; then
-        AC_DEFINE([USE_SQLITE],[1],[Define if sqlite support should be compiled in])
-        use_sqlite=yes
-      fi
+    if test "x$have_sqlite" = "xno"; then
+        AC_MSG_ERROR([sqlite missing, ]AC_PACKAGE_NAME[ requires this library for wallet functionality (--disable-wallet to disable wallet functionality)])
     fi
+    use_sqlite=yes
     AC_MSG_RESULT([$use_sqlite])
 
     dnl Disable wallet if both --without-bdb and --without-sqlite
@@ -1782,7 +1772,6 @@ AM_CONDITIONAL([BUILD_DARWIN], [test x$BUILD_OS = xdarwin])
 AM_CONDITIONAL([TARGET_LINUX], [test x$TARGET_OS = xlinux])
 AM_CONDITIONAL([TARGET_WINDOWS], [test x$TARGET_OS = xwindows])
 AM_CONDITIONAL([ENABLE_WALLET],[test x$enable_wallet = xyes])
-AM_CONDITIONAL([USE_SQLITE], [test "x$use_sqlite" = "xyes"])
 AM_CONDITIONAL([USE_BDB], [test "x$use_bdb" = "xyes"])
 AM_CONDITIONAL([ENABLE_TRACING],[test x$have_sdt = xyes])
 AM_CONDITIONAL([ENABLE_TESTS],[test x$BUILD_TEST = xyes])
@@ -1852,7 +1841,6 @@ AC_SUBST(AVX2_CXXFLAGS)
 AC_SUBST(SHANI_CXXFLAGS)
 AC_SUBST(ARM_CRC_CXXFLAGS)
 AC_SUBST(LIBTOOL_APP_LDFLAGS)
-AC_SUBST(USE_SQLITE)
 AC_SUBST(USE_BDB)
 AC_SUBST(ENABLE_EXTERNAL_SIGNER)
 AC_SUBST(USE_UPNP)

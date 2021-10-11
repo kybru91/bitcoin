@@ -422,6 +422,7 @@ libbitcoin_wallet_a_SOURCES = \
   wallet/rpcwallet.cpp \
   wallet/scriptpubkeyman.cpp \
   wallet/spend.cpp \
+  wallet/sqlite.cpp \
   wallet/transaction.cpp \
   wallet/wallet.cpp \
   wallet/walletdb.cpp \
@@ -429,9 +430,6 @@ libbitcoin_wallet_a_SOURCES = \
   wallet/coinselection.cpp \
   $(BITCOIN_CORE_H)
 
-if USE_SQLITE
-libbitcoin_wallet_a_SOURCES += wallet/sqlite.cpp
-endif
 if USE_BDB
 libbitcoin_wallet_a_SOURCES += wallet/bdb.cpp wallet/salvage.cpp
 endif
