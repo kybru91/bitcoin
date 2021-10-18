@@ -137,19 +137,6 @@ WalletContext& EnsureWalletContext(const std::any& context)
     return *wallet_context;
 }
 
-// also_create should only be set to true only when the RPC is expected to add things to a blank wallet and make it no longer blank
-LegacyScriptPubKeyMan& EnsureLegacyScriptPubKeyMan(CWallet& wallet, bool also_create)
-{
-    LegacyScriptPubKeyMan* spk_man = wallet.GetLegacyScriptPubKeyMan();
-    if (!spk_man && also_create) {
-        spk_man = wallet.GetOrCreateLegacyScriptPubKeyMan();
-    }
-    if (!spk_man) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "This type of wallet does not support this command");
-    }
-    return *spk_man;
-}
-
 static void WalletTxToJSON(const CWallet& wallet, const CWalletTx& wtx, UniValue& entry)
 {
     interfaces::Chain& chain = wallet.chain();
@@ -950,92 +937,6 @@ static RPCHelpMan sendmany()
     };
 }
 
-
-static RPCHelpMan addmultisigaddress()
-{
-    return RPCHelpMan{"addmultisigaddress",
-                "\nAdd an nrequired-to-sign multisignature address to the wallet. Requires a new wallet backup.\n"
-                "Each key is a Bitcoin address or hex-encoded public key.\n"
-                "This functionality is only intended for use with non-watchonly addresses.\n"
-                "See `importaddress` for watchonly p2sh address support.\n"
-                "If 'label' is specified, assign address to that label.\n",
-                {
-                    {"nrequired", RPCArg::Type::NUM, RPCArg::Optional::NO, "The number of required signatures out of the n keys or addresses."},
-                    {"keys", RPCArg::Type::ARR, RPCArg::Optional::NO, "The bitcoin addresses or hex-encoded public keys",
-                        {
-                            {"key", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "bitcoin address or hex-encoded public key"},
-                        },
-                        },
-                    {"label", RPCArg::Type::STR, RPCArg::Optional::OMITTED_NAMED_ARG, "A label to assign the addresses to."},
-                    {"address_type", RPCArg::Type::STR, RPCArg::DefaultHint{"set by -addresstype"}, "The address type to use. Options are \"legacy\", \"p2sh-segwit\", and \"bech32\"."},
-                },
-                RPCResult{
-                    RPCResult::Type::OBJ, "", "",
-                    {
-                        {RPCResult::Type::STR, "address", "The value of the new multisig address"},
-                        {RPCResult::Type::STR_HEX, "redeemScript", "The string value of the hex-encoded redemption script"},
-                        {RPCResult::Type::STR, "descriptor", "The descriptor for this multisig"},
-                    }
-                },
-                RPCExamples{
-            "\nAdd a multisig address from 2 addresses\n"
-            + HelpExampleCli("addmultisigaddress", "2 \"[\\\"" + EXAMPLE_ADDRESS[0] + "\\\",\\\"" + EXAMPLE_ADDRESS[1] + "\\\"]\"") +
-            "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("addmultisigaddress", "2, \"[\\\"" + EXAMPLE_ADDRESS[0] + "\\\",\\\"" + EXAMPLE_ADDRESS[1] + "\\\"]\"")
-                },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
-{
-    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
-    if (!pwallet) return NullUniValue;
-
-    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*pwallet);
-
-    LOCK2(pwallet->cs_wallet, spk_man.cs_KeyStore);
-
-    std::string label;
-    if (!request.params[2].isNull())
-        label = LabelFromValue(request.params[2]);
-
-    int required = request.params[0].get_int();
-
-    // Get the public keys
-    const UniValue& keys_or_addrs = request.params[1].get_array();
-    std::vector<CPubKey> pubkeys;
-    for (unsigned int i = 0; i < keys_or_addrs.size(); ++i) {
-        if (IsHex(keys_or_addrs[i].get_str()) && (keys_or_addrs[i].get_str().length() == 66 || keys_or_addrs[i].get_str().length() == 130)) {
-            pubkeys.push_back(HexToPubKey(keys_or_addrs[i].get_str()));
-        } else {
-            pubkeys.push_back(AddrToPubKey(spk_man, keys_or_addrs[i].get_str()));
-        }
-    }
-
-    OutputType output_type = pwallet->m_default_address_type;
-    if (!request.params[3].isNull()) {
-        std::optional<OutputType> parsed = ParseOutputType(request.params[3].get_str());
-        if (!parsed) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Unknown address type '%s'", request.params[3].get_str()));
-        } else if (parsed.value() == OutputType::BECH32M) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Bech32m multisig addresses cannot be created with legacy wallets");
-        }
-        output_type = parsed.value();
-    }
-
-    // Construct using pay-to-script-hash:
-    CScript inner;
-    CTxDestination dest = AddAndGetMultisigDestination(required, pubkeys, output_type, spk_man, inner);
-    pwallet->SetAddressBook(dest, label, "send");
-
-    // Make the descriptor
-    std::unique_ptr<Descriptor> descriptor = InferDescriptor(GetScriptForDestination(dest), spk_man);
-
-    UniValue result(UniValue::VOBJ);
-    result.pushKV("address", EncodeDestination(dest));
-    result.pushKV("redeemScript", HexStr(inner));
-    result.pushKV("descriptor", descriptor->ToString());
-    return result;
-},
-    };
-}
 
 struct tallyitem
 {
@@ -1878,33 +1779,6 @@ static RPCHelpMan keypoolrefill()
     if (pwallet->GetKeyPoolSize() < kpSize) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Error refreshing keypool.");
     }
-
-    return NullUniValue;
-},
-    };
-}
-
-
-static RPCHelpMan newkeypool()
-{
-    return RPCHelpMan{"newkeypool",
-                "\nEntirely clears and refills the keypool."+
-            HELP_REQUIRING_PASSPHRASE,
-                {},
-                RPCResult{RPCResult::Type::NONE, "", ""},
-                RPCExamples{
-            HelpExampleCli("newkeypool", "")
-            + HelpExampleRpc("newkeypool", "")
-                },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
-{
-    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
-    if (!pwallet) return NullUniValue;
-
-    LOCK(pwallet->cs_wallet);
-
-    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*pwallet, true);
-    spk_man.NewKeyPool();
 
     return NullUniValue;
 },
@@ -4420,77 +4294,6 @@ static RPCHelpMan send()
     };
 }
 
-static RPCHelpMan sethdseed()
-{
-    return RPCHelpMan{"sethdseed",
-                "\nSet or generate a new HD wallet seed. Non-HD wallets will not be upgraded to being a HD wallet. Wallets that are already\n"
-                "HD will have a new HD seed set so that new keys added to the keypool will be derived from this new seed.\n"
-                "\nNote that you will need to MAKE A NEW BACKUP of your wallet after setting the HD wallet seed." +
-        HELP_REQUIRING_PASSPHRASE,
-                {
-                    {"newkeypool", RPCArg::Type::BOOL, RPCArg::Default{true}, "Whether to flush old unused addresses, including change addresses, from the keypool and regenerate it.\n"
-                                         "If true, the next address from getnewaddress and change address from getrawchangeaddress will be from this new seed.\n"
-                                         "If false, addresses (including change addresses if the wallet already had HD Chain Split enabled) from the existing\n"
-                                         "keypool will be used until it has been depleted."},
-                    {"seed", RPCArg::Type::STR, RPCArg::DefaultHint{"random seed"}, "The WIF private key to use as the new HD seed.\n"
-                                         "The seed value can be retrieved using the dumpwallet command. It is the private key marked hdseed=1"},
-                },
-                RPCResult{RPCResult::Type::NONE, "", ""},
-                RPCExamples{
-                    HelpExampleCli("sethdseed", "")
-            + HelpExampleCli("sethdseed", "false")
-            + HelpExampleCli("sethdseed", "true \"wifkey\"")
-            + HelpExampleRpc("sethdseed", "true, \"wifkey\"")
-                },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
-{
-    std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
-    if (!pwallet) return NullUniValue;
-
-    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*pwallet, true);
-
-    if (pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Cannot set a HD seed to a wallet with private keys disabled");
-    }
-
-    LOCK2(pwallet->cs_wallet, spk_man.cs_KeyStore);
-
-    // Do not do anything to non-HD wallets
-    if (!pwallet->CanSupportFeature(FEATURE_HD)) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Cannot set an HD seed on a non-HD wallet. Use the upgradewallet RPC in order to upgrade a non-HD wallet to HD");
-    }
-
-    EnsureWalletIsUnlocked(*pwallet);
-
-    bool flush_key_pool = true;
-    if (!request.params[0].isNull()) {
-        flush_key_pool = request.params[0].get_bool();
-    }
-
-    CPubKey master_pub_key;
-    if (request.params[1].isNull()) {
-        master_pub_key = spk_man.GenerateNewSeed();
-    } else {
-        CKey key = DecodeSecret(request.params[1].get_str());
-        if (!key.IsValid()) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid private key");
-        }
-
-        if (HaveKey(spk_man, key)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Already have this key (either as an HD seed or as a loose private key)");
-        }
-
-        master_pub_key = spk_man.DeriveNewSeed(key);
-    }
-
-    spk_man.SetHDSeed(master_pub_key);
-    if (flush_key_pool) spk_man.NewKeyPool();
-
-    return NullUniValue;
-},
-    };
-}
-
 static RPCHelpMan walletprocesspsbt()
 {
     return RPCHelpMan{"walletprocesspsbt",
@@ -4883,14 +4686,11 @@ static const CRPCCommand commands[] =
     { "rawtransactions",    &fundrawtransaction,             },
     { "wallet",             &abandontransaction,             },
     { "wallet",             &abortrescan,                    },
-    { "wallet",             &addmultisigaddress,             },
     { "wallet",             &backupwallet,                   },
     { "wallet",             &bumpfee,                        },
     { "wallet",             &psbtbumpfee,                    },
     { "wallet",             &createwallet,                   },
     { "wallet",             &restorewallet,                  },
-    { "wallet",             &dumpprivkey,                    },
-    { "wallet",             &dumpwallet,                     },
     { "wallet",             &encryptwallet,                  },
     { "wallet",             &getaddressesbylabel,            },
     { "wallet",             &getaddressinfo,                 },
@@ -4903,13 +4703,8 @@ static const CRPCCommand commands[] =
     { "wallet",             &getunconfirmedbalance,          },
     { "wallet",             &getbalances,                    },
     { "wallet",             &getwalletinfo,                  },
-    { "wallet",             &importaddress,                  },
     { "wallet",             &importdescriptors,              },
-    { "wallet",             &importmulti,                    },
-    { "wallet",             &importprivkey,                  },
     { "wallet",             &importprunedfunds,              },
-    { "wallet",             &importpubkey,                   },
-    { "wallet",             &importwallet,                   },
     { "wallet",             &keypoolrefill,                  },
     { "wallet",             &listaddressgroupings,           },
     { "wallet",             &listdescriptors,                },
@@ -4924,13 +4719,11 @@ static const CRPCCommand commands[] =
     { "wallet",             &listwallets,                    },
     { "wallet",             &loadwallet,                     },
     { "wallet",             &lockunspent,                    },
-    { "wallet",             &newkeypool,                     },
     { "wallet",             &removeprunedfunds,              },
     { "wallet",             &rescanblockchain,               },
     { "wallet",             &send,                           },
     { "wallet",             &sendmany,                       },
     { "wallet",             &sendtoaddress,                  },
-    { "wallet",             &sethdseed,                      },
     { "wallet",             &setlabel,                       },
     { "wallet",             &settxfee,                       },
     { "wallet",             &setwalletflag,                  },

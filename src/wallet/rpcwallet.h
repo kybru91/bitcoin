@@ -15,7 +15,6 @@
 class CRPCCommand;
 class CWallet;
 class JSONRPCRequest;
-class LegacyScriptPubKeyMan;
 class UniValue;
 class CTransaction;
 struct PartiallySignedTransaction;
@@ -33,7 +32,6 @@ std::shared_ptr<CWallet> GetWalletForJSONRPCRequest(const JSONRPCRequest& reques
 
 void EnsureWalletIsUnlocked(const CWallet&);
 WalletContext& EnsureWalletContext(const std::any& context);
-LegacyScriptPubKeyMan& EnsureLegacyScriptPubKeyMan(CWallet& wallet, bool also_create = false);
 
 RPCHelpMan getaddressinfo();
 RPCHelpMan signrawtransactionwithwallet();
