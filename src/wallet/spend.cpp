@@ -265,9 +265,7 @@ std::map<CTxDestination, std::vector<COutput>> ListCoins(const CWallet& wallet)
 
     std::vector<COutPoint> lockedCoins;
     wallet.ListLockedCoins(lockedCoins);
-    // Include watch-only for LegacyScriptPubKeyMan wallets without private keys
-    const bool include_watch_only = wallet.GetLegacyScriptPubKeyMan() && wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS);
-    const isminetype is_mine_filter = include_watch_only ? ISMINE_WATCH_ONLY : ISMINE_SPENDABLE;
+    const isminetype is_mine_filter = ISMINE_SPENDABLE;
     for (const COutPoint& output : lockedCoins) {
         auto it = wallet.mapWallet.find(output.hash);
         if (it != wallet.mapWallet.end()) {

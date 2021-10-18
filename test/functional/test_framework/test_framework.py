@@ -215,12 +215,7 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
             # Prefer BDB unless it isn't available
             if self.is_bdb_compiled():
                 self.options.descriptors = False
-            elif self.is_sqlite_compiled():
-                self.options.descriptors = True
-            else:
-                # If neither are compiled, tests requiring a wallet will be skipped and the value of self.options.descriptors won't matter
-                # It still needs to exist and be None in order for tests to work however.
-                self.options.descriptors = None
+            self.options.descriptors = True
 
     def setup(self):
         """Call this method to start up the test framework object with options set."""
@@ -824,15 +819,6 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
         self.requires_wallet = True
         if not self.is_wallet_compiled():
             raise SkipTest("wallet has not been compiled.")
-        if self.options.descriptors:
-            self.skip_if_no_sqlite()
-        else:
-            self.skip_if_no_bdb()
-
-    def skip_if_no_sqlite(self):
-        """Skip the running test if sqlite has not been compiled."""
-        if not self.is_sqlite_compiled():
-            raise SkipTest("sqlite has not been compiled.")
 
     def skip_if_no_bdb(self):
         """Skip the running test if BDB has not been compiled."""
@@ -886,10 +872,6 @@ class BitcoinTestFramework(metaclass=BitcoinTestMetaClass):
     def is_zmq_compiled(self):
         """Checks whether the zmq module was compiled."""
         return self.config["components"].getboolean("ENABLE_ZMQ")
-
-    def is_sqlite_compiled(self):
-        """Checks whether the wallet module was compiled with Sqlite support."""
-        return self.config["components"].getboolean("USE_SQLITE")
 
     def is_bdb_compiled(self):
         """Checks whether the wallet module was compiled with BDB support."""

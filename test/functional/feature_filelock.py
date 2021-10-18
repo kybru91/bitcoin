@@ -42,8 +42,7 @@ class FilelockTest(BitcoinTestFramework):
 
             if self.is_bdb_compiled():
                 check_wallet_filelock(False)
-            if self.is_sqlite_compiled():
-                check_wallet_filelock(True)
+            check_wallet_filelock(True)
 
 if __name__ == '__main__':
     FilelockTest().main()

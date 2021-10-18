@@ -155,11 +155,7 @@ public:
     }
     bool haveWatchOnly() override
     {
-        auto spk_man = m_wallet->GetLegacyScriptPubKeyMan();
-        if (spk_man) {
-            return spk_man->HaveWatchOnly();
-        }
-        return false;
+        return m_wallet->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS);
     };
     bool setAddressBook(const CTxDestination& dest, const std::string& name, const std::string& purpose) override
     {
@@ -464,7 +460,6 @@ public:
     {
         RemoveWallet(m_context, m_wallet, false /* load_on_start */);
     }
-    bool isLegacy() override { return m_wallet->IsLegacy(); }
     std::unique_ptr<Handler> handleUnload(UnloadFn fn) override
     {
         return MakeHandler(m_wallet->NotifyUnload.connect(fn));

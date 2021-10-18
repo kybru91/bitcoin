@@ -49,7 +49,7 @@ static feebumper::Result PreconditionChecks(const CWallet& wallet, const CWallet
 
     // check that original tx consists entirely of our inputs
     // if not, we can't bump the fee, because the wallet has no way of knowing the value of the other inputs (thus the fee)
-    isminefilter filter = wallet.GetLegacyScriptPubKeyMan() && wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) ? ISMINE_WATCH_ONLY : ISMINE_SPENDABLE;
+    isminefilter filter = ISMINE_SPENDABLE;
     if (!AllInputsMine(wallet, *wtx.tx, filter)) {
         errors.push_back(Untranslated("Transaction contains inputs that don't belong to this wallet"));
         return feebumper::Result::WALLET_ERROR;
@@ -82,7 +82,7 @@ static feebumper::Result CheckFeeRate(const CWallet& wallet, const CWalletTx& wt
     CFeeRate incrementalRelayFee = std::max(wallet.chain().relayIncrementalFee(), CFeeRate(WALLET_INCREMENTAL_RELAY_FEE));
 
     // Given old total fee and transaction size, calculate the old feeRate
-    isminefilter filter = wallet.GetLegacyScriptPubKeyMan() && wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) ? ISMINE_WATCH_ONLY : ISMINE_SPENDABLE;
+    isminefilter filter = ISMINE_SPENDABLE;
     CAmount old_fee = CachedTxGetDebit(wallet, wtx, filter) - wtx.tx->GetValueOut();
     const int64_t txSize = GetVirtualTransactionSize(*(wtx.tx));
     CFeeRate nOldFeeRate(old_fee, txSize);
@@ -186,7 +186,7 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
         }
     }
 
-    isminefilter filter = wallet.GetLegacyScriptPubKeyMan() && wallet.IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) ? ISMINE_WATCH_ONLY : ISMINE_SPENDABLE;
+    isminefilter filter = ISMINE_SPENDABLE;
     old_fee = CachedTxGetDebit(wallet, wtx, filter) - wtx.tx->GetValueOut();
 
     if (coin_control.m_feerate) {
