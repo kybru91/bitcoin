@@ -344,6 +344,8 @@ private:
      */
     static bool AttachChain(const std::shared_ptr<CWallet>& wallet, interfaces::Chain& chain, const bool rescan_required, bilingual_str& error, std::vector<bilingual_str>& warnings);
 
+    KeyManager m_keyman;
+
 public:
     /**
      * Main wallet lock.
@@ -370,7 +372,8 @@ public:
         : m_args(args),
           m_chain(chain),
           m_name(name),
-          m_database(std::move(database))
+          m_database(std::move(database)),
+          m_keyman(*this)
     {
     }
 
