@@ -3294,15 +3294,11 @@ void CWallet::SetupDescriptorScriptPubKeyMans()
     AssertLockHeld(cs_wallet);
 
     if (!IsWalletFlagSet(WALLET_FLAG_EXTERNAL_SIGNER)) {
-        // Make a seed
-        CKey seed_key;
-        seed_key.MakeNewKey(true);
-        CPubKey seed = seed_key.GetPubKey();
-        assert(seed_key.VerifyPubKey(seed));
-
-        // Get the extended key
-        CExtKey master_key;
-        master_key.SetSeed(seed_key);
+        {
+            LOCK(m_keyman.cs_keyman);
+            m_keyman.GenerateAndSetHDKey();
+            SetWalletFlag(WALLET_FLAG_USES_KEYMAN);
+        }
 
         for (bool internal : {false, true}) {
             for (OutputType t : OUTPUT_TYPES) {
@@ -3315,7 +3311,7 @@ void CWallet::SetupDescriptorScriptPubKeyMans()
                         throw std::runtime_error(std::string(__func__) + ": Could not encrypt new descriptors");
                     }
                 }
-                spk_manager->SetupDescriptorGeneration(master_key, t, internal);
+                spk_manager->SetupDescriptorGeneration(t, internal);
                 uint256 id = spk_manager->GetID();
                 m_spk_managers[id] = std::move(spk_manager);
                 AddActiveScriptPubKeyMan(id, t, internal);
