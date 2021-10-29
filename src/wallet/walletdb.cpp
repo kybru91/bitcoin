@@ -809,6 +809,66 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssKey >> hash;
             ssKey >> n;
             pwallet->LockCoin(COutPoint(hash, n));
+        } else if (strType == DBKeys::ACTIVEHDKEY) {
+            CExtPubKey extpub;
+            std::vector<unsigned char> xpub(BIP32_EXTKEY_SIZE);
+            ssValue >> xpub;
+            extpub.Decode(xpub.data());
+            pwallet->GetKeyManager().LoadActiveHDKey(extpub);
+        } else if (strType == DBKeys::HDPUBKEY) {
+            CExtPubKey extpub;
+            std::vector<unsigned char> xpub(BIP32_EXTKEY_SIZE);
+            ssKey >> xpub;
+            extpub.Decode(xpub.data());
+            pwallet->GetKeyManager().LoadHDKey(extpub.pubkey.GetID(), extpub);
+        } else if (strType == DBKeys::KEYMAN_KEY) {
+            CPubKey pubkey;
+            ssKey >> pubkey;
+            if (!pubkey.IsValid())
+            {
+                strErr = "Error reading wallet database: CPubKey corrupt";
+                return false;
+            }
+            CKey key;
+            CPrivKey pkey;
+            uint256 hash;
+
+            wss.nKeys++;
+            ssValue >> pkey;
+            ssValue >> hash;
+
+            // hash pubkey/privkey to accelerate wallet load
+            std::vector<unsigned char> to_hash;
+            to_hash.reserve(pubkey.size() + pkey.size());
+            to_hash.insert(to_hash.end(), pubkey.begin(), pubkey.end());
+            to_hash.insert(to_hash.end(), pkey.begin(), pkey.end());
+
+            if (Hash(to_hash) != hash)
+            {
+                strErr = "Error reading wallet database: CPubKey/CPrivKey corrupt";
+                return false;
+            }
+
+            if (!key.Load(pkey, pubkey, true))
+            {
+                strErr = "Error reading wallet database: CPrivKey corrupt";
+                return false;
+            }
+            pwallet->GetKeyManager().LoadKey(pubkey.GetID(), key);
+        } else if (strType == DBKeys::KEYMAN_CKEY) {
+            CPubKey pubkey;
+            ssKey >> pubkey;
+            if (!pubkey.IsValid())
+            {
+                strErr = "Error reading wallet database: CPubKey corrupt";
+                return false;
+            }
+            std::vector<unsigned char> privkey;
+            ssValue >> privkey;
+            wss.nCKeys++;
+
+            pwallet->GetKeyManager().LoadCryptedKey(pubkey.GetID(), pubkey, privkey);
+            wss.fIsEncrypted = true;
         } else if (strType != DBKeys::BESTBLOCK && strType != DBKeys::BESTBLOCK_NOMERKLE &&
                    strType != DBKeys::MINVERSION && strType != DBKeys::ACENTRY &&
                    strType != DBKeys::VERSION && strType != DBKeys::SETTINGS &&
