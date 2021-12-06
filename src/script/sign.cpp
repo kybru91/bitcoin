@@ -600,6 +600,7 @@ public:
         }
         return true;
     }
+    bool UseLargest() const override { return true; }
 };
 
 }
