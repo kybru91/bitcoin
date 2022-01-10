@@ -561,7 +561,7 @@ public:
     {
         DatabaseStatus status;
 
-        return MakeWallet(m_context, RestoreWallet(m_context, backup_file, wallet_name, /*load_on_start=*/true, status, error, warnings));
+        return MakeWallet(m_context, RestoreWallet(m_context, fs::u8path(backup_file), wallet_name, /*load_on_start=*/true, status, error, warnings));
     }
     std::string getWalletDir() override
     {
