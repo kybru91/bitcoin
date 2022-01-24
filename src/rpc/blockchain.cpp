@@ -469,7 +469,7 @@ static void entryToJSON(const CTxMemPool& pool, UniValue& info, const CTxMemPool
     info.pushKV("vsize", (int)e.GetTxSize());
     info.pushKV("weight", (int)e.GetTxWeight());
     // TODO: top-level fee fields are deprecated. deprecated_fee_fields_enabled blocks should be removed in v24
-    const bool deprecated_fee_fields_enabled{IsDeprecatedRPCEnabled("fees")};
+    const bool deprecated_fee_fields_enabled{IsDeprecatedRPCEnabled(gArgs, "fees")};
     if (deprecated_fee_fields_enabled) {
         info.pushKV("fee", ValueFromAmount(e.GetFee()));
         info.pushKV("modifiedfee", ValueFromAmount(e.GetModifiedFee()));

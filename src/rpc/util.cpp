@@ -11,6 +11,7 @@
 #include <tinyformat.h>
 #include <util/strencodings.h>
 #include <util/string.h>
+#include <util/system.h>
 #include <util/translation.h>
 
 #include <tuple>
@@ -1035,4 +1036,11 @@ UniValue GetServicesNames(ServiceFlags services)
     }
 
     return servicesNames;
+}
+
+bool IsDeprecatedRPCEnabled(const ArgsManager& args, const std::string& method)
+{
+    const std::vector<std::string> enabled_methods = args.GetArgs("-deprecatedrpc");
+
+    return find(enabled_methods.begin(), enabled_methods.end(), method) != enabled_methods.end();
 }

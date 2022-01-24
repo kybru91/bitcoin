@@ -152,7 +152,7 @@ FUZZ_TARGET(string)
     (void)HelpExampleRpc(random_string_1, random_string_2);
     (void)HelpMessageGroup(random_string_1);
     (void)HelpMessageOpt(random_string_1, random_string_2);
-    (void)IsDeprecatedRPCEnabled(random_string_1);
+    (void)IsDeprecatedRPCEnabled(gArgs, random_string_1);
     (void)Join(random_string_vector, random_string_1);
     (void)JSONRPCError(fuzzed_data_provider.ConsumeIntegral<int>(), random_string_1);
     const util::Settings settings;
