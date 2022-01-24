@@ -602,7 +602,7 @@ def test_no_more_inputs_fails(self, rbf_node, dest_address):
     # feerate rbf requires confirmed outputs when change output doesn't exist or is insufficient
     self.generatetoaddress(rbf_node, 1, dest_address)
     # spend all funds, no change output
-    rbfid = rbf_node.sendtoaddress(rbf_node.getnewaddress(), rbf_node.getbalance(), "", "", True)
+    rbfid = rbf_node.sweep(receivers=[rbf_node.getnewaddress()], options={"replaceable": True})["txid"]
     assert_raises_rpc_error(-4, "Unable to create transaction. Insufficient funds", rbf_node.bumpfee, rbfid)
     self.clear_mempool()
 
