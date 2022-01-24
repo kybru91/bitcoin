@@ -53,13 +53,11 @@ public:
 
 public Q_SLOTS:
     void clear();
-    void checkSubtractFeeFromAmount();
 
 Q_SIGNALS:
     void removeEntry(SendCoinsEntry *entry);
     void useAvailableBalance(SendCoinsEntry* entry);
     void payAmountChanged();
-    void subtractFeeFromAmountChanged();
 
 private Q_SLOTS:
     void deleteClicked();
