@@ -71,7 +71,7 @@ class CoinStatsIndexTest(BitcoinTestFramework):
         # Generate a normal transaction and mine it
         self.generate(node, COINBASE_MATURITY + 1)
         address = self.nodes[0].get_deterministic_priv_key().address
-        node.sendtoaddress(address=address, amount=10, subtractfeefromamount=True)
+        node.sweep([{node.getrawchangeaddress(): 40}, address])
         self.generate(node, 1)
 
         self.log.info("Test that gettxoutsetinfo() output is consistent with or without coinstatsindex option")

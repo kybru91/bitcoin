@@ -80,6 +80,14 @@ class RawTransactionsTest(BitcoinTestFramework):
         wallet.lockunspent(True)
         wallet.lockunspent(False, to_keep)
 
+    def restart_node_sffo(self, node_num, enable_sffo):
+        extra_args = []
+        if enable_sffo:
+            extra_args.append("-deprecatedrpc=sffo")
+        self.restart_node(node_num, extra_args=extra_args)
+        self.connect_nodes(0, node_num)
+        self.nodes[node_num].settxfee(self.min_relay_tx_fee)
+
     def run_test(self):
         self.watchonly_txid = None
         self.watchonly_vout = None
@@ -139,8 +147,8 @@ class RawTransactionsTest(BitcoinTestFramework):
     def test_change_position(self):
         """Ensure setting changePosition in fundraw with an exact match is handled properly."""
         self.log.info("Test fundrawtxn changePosition option")
-        rawmatch = self.nodes[2].createrawtransaction([], {self.nodes[2].getnewaddress():50})
-        rawmatch = self.nodes[2].fundrawtransaction(rawmatch, {"changePosition":1, "subtractFeeFromOutputs":[0]})
+        rawmatch = self.nodes[2].createrawtransaction([], {self.nodes[2].getnewaddress():49.99999})
+        rawmatch = self.nodes[2].fundrawtransaction(rawmatch, {"changePosition":1})
         assert_equal(rawmatch["changepos"], -1)
 
         self.nodes[3].createwallet(wallet_name="wwatch", disable_private_keys=True)
@@ -629,7 +637,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.log.info("Test fundrawtxn fee with many inputs")
 
         # Empty node1, send some small coins from node0 to node1.
-        self.nodes[1].sendtoaddress(self.nodes[0].getnewaddress(), self.nodes[1].getbalance(), "", "", True)
+        self.nodes[1].sweep([self.nodes[0].getnewaddress()])
         self.generate(self.nodes[1], 1)
 
         for _ in range(20):
@@ -655,7 +663,7 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.log.info("Test fundrawtxn sign+send with many inputs")
 
         # Again, empty node1, send some small coins from node0 to node1.
-        self.nodes[1].sendtoaddress(self.nodes[0].getnewaddress(), self.nodes[1].getbalance(), "", "", True)
+        self.nodes[1].sweep([self.nodes[0].getnewaddress()])
         self.generate(self.nodes[1], 1)
 
         for _ in range(20):
@@ -726,6 +734,7 @@ class RawTransactionsTest(BitcoinTestFramework):
 
     def test_all_watched_funds(self):
         self.log.info("Test fundrawtxn using entirety of watched funds")
+        self.restart_node_sffo(3, True)
 
         inputs = []
         outputs = {self.nodes[2].getnewaddress(): self.watchonly_amount}
@@ -752,9 +761,12 @@ class RawTransactionsTest(BitcoinTestFramework):
 
         wwatch.unloadwallet()
 
+        self.restart_node_sffo(3, False)
+
     def test_option_feerate(self):
         self.log.info("Test fundrawtxn with explicit fee rates (fee_rate sat/vB and feeRate BTC/kvB)")
         node = self.nodes[3]
+        node.settxfee(self.min_relay_tx_fee)
         # Make sure there is exactly one input so coin selection can't skew the result.
         assert_equal(len(self.nodes[3].listunspent(1)), 1)
         inputs = []
@@ -858,6 +870,7 @@ class RawTransactionsTest(BitcoinTestFramework):
 
     def test_option_subtract_fee_from_outputs(self):
         self.log.info("Test fundrawtxn subtractFeeFromOutputs option")
+        self.restart_node_sffo(3, True)
 
         # Make sure there is exactly one input so coin selection can't skew the result.
         assert_equal(len(self.nodes[3].listunspent(1)), 1)
@@ -945,17 +958,24 @@ class RawTransactionsTest(BitcoinTestFramework):
         # The total subtracted from the outputs is equal to the fee.
         assert_equal(share[0] + share[2] + share[3], result[0]['fee'])
 
+        self.restart_node_sffo(3, False)
+
     def test_subtract_fee_with_presets(self):
         self.log.info("Test fundrawtxn subtract fee from outputs with preset inputs that are sufficient")
+        self.restart_node_sffo(3, True)
 
-        addr = self.nodes[0].getnewaddress()
+        addr = self.nodes[3].getnewaddress()
         txid = self.nodes[0].sendtoaddress(addr, 10)
-        vout = find_vout_for_address(self.nodes[0], txid, addr)
+        self.sync_all()
+        vout = find_vout_for_address(self.nodes[3], txid, addr)
 
-        rawtx = self.nodes[0].createrawtransaction([{'txid': txid, 'vout': vout}], [{self.nodes[0].getnewaddress(): 5}])
-        fundedtx = self.nodes[0].fundrawtransaction(rawtx, {'subtractFeeFromOutputs': [0]})
-        signedtx = self.nodes[0].signrawtransactionwithwallet(fundedtx['hex'])
-        self.nodes[0].sendrawtransaction(signedtx['hex'])
+        rawtx = self.nodes[3].createrawtransaction([{'txid': txid, 'vout': vout}], [{self.nodes[0].getnewaddress(): 5}])
+        fundedtx = self.nodes[3].fundrawtransaction(rawtx, {'subtractFeeFromOutputs': [0]})
+        signedtx = self.nodes[3].signrawtransactionwithwallet(fundedtx['hex'])
+        self.nodes[3].sendrawtransaction(signedtx['hex'])
+        self.sync_all()
+
+        self.restart_node_sffo(3, False)
 
     def test_transaction_too_large(self):
         self.log.info("Test fundrawtx where BnB solution would result in a too large transaction, but Knapsack would not")
@@ -1087,13 +1107,15 @@ class RawTransactionsTest(BitcoinTestFramework):
         self.generate(self.nodes[0], 1, sync_fun=self.no_op)
 
         # Create transactions in order to calculate fees for the target bounds that can trigger this bug
-        change_tx = tester.fundrawtransaction(tester.createrawtransaction([], [{funds.getnewaddress(): 1.5}]))
-        tx = tester.createrawtransaction([], [{funds.getnewaddress(): 2}])
-        no_change_tx = tester.fundrawtransaction(tx, {"subtractFeeFromOutputs": [0]})
+        tx = tester.createrawtransaction([], [{funds.getnewaddress(): 1.5}])
+        change_tx = tester.fundrawtransaction(tx)
+        tester.lockunspent(False, [tester.listunspent()[0]])
+        no_change_tx = tester.sweep(receivers=[funds.getnewaddress()], options={"add_to_wallet": False})["hex"]
+        tester.lockunspent(True)
+        fees = 2 - tester.decoderawtransaction(no_change_tx)["vout"][0]["value"]
 
         overhead_fees = feerate * len(tx) / 2 / 1000
-        cost_of_change = change_tx["fee"] - no_change_tx["fee"]
-        fees = no_change_tx["fee"]
+        cost_of_change = change_tx["fee"] - fees
         assert_greater_than(fees, 0.01)
 
         def do_fund_send(target):

@@ -269,13 +269,13 @@ class WalletTaprootTest(BitcoinTestFramework):
             if treefn is not None:
                 addr_r = self.make_addr(treefn, keys_pay, i)
                 assert_equal(addr_g, addr_r)
-            boring_balance = int(self.boring.getbalance() * 100000000)
+            boring_balance = int(self.boring.getbalance() * 100000000) - 10000 # Leave a buffer for fees
             to_amnt = random.randrange(1000000, boring_balance)
-            self.boring.sendtoaddress(address=addr_g, amount=Decimal(to_amnt) / 100000000, subtractfeefromamount=True)
+            self.boring.sendtoaddress(address=addr_g, amount=Decimal(to_amnt) / 100000000)
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
-            test_balance = int(self.rpc_online.getbalance() * 100000000)
+            test_balance = int(self.rpc_online.getbalance() * 100000000) - 10000 # Leave a buffer for fees
             ret_amnt = random.randrange(100000, test_balance)
-            res = self.rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=Decimal(ret_amnt) / 100000000, subtractfeefromamount=True)
+            res = self.rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=Decimal(ret_amnt) / 100000000)
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
             assert(self.rpc_online.gettransaction(res)["confirmations"] > 0)
 
@@ -300,13 +300,13 @@ class WalletTaprootTest(BitcoinTestFramework):
             if treefn is not None:
                 addr_r = self.make_addr(treefn, keys_pay, i)
                 assert_equal(addr_g, addr_r)
-            boring_balance = int(self.boring.getbalance() * 100000000)
+            boring_balance = int(self.boring.getbalance() * 100000000) - 10000 # Leave a buffer for fees
             to_amnt = random.randrange(1000000, boring_balance)
-            self.boring.sendtoaddress(address=addr_g, amount=Decimal(to_amnt) / 100000000, subtractfeefromamount=True)
+            self.boring.sendtoaddress(address=addr_g, amount=Decimal(to_amnt) / 100000000)
             self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
-            test_balance = int(self.psbt_online.getbalance() * 100000000)
+            test_balance = int(self.psbt_online.getbalance() * 100000000) - 10000 # Leave a buffer for fees
             ret_amnt = random.randrange(100000, test_balance)
-            psbt = self.psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): Decimal(ret_amnt) / 100000000}], None, {"subtractFeeFromOutputs":[0]})['psbt']
+            psbt = self.psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): Decimal(ret_amnt) / 100000000}])['psbt']
             res = self.psbt_offline.walletprocesspsbt(psbt)
             assert(res['complete'])
             rawtx = self.nodes[0].finalizepsbt(res['psbt'])['hex']
@@ -411,11 +411,11 @@ class WalletTaprootTest(BitcoinTestFramework):
 
         self.log.info("Sending everything back...")
 
-        txid = self.rpc_online.sendtoaddress(address=self.boring.getnewaddress(), amount=self.rpc_online.getbalance(), subtractfeefromamount=True)
+        txid = self.rpc_online.sweep([self.boring.getnewaddress()])["txid"]
         self.generatetoaddress(self.nodes[0], 1, self.boring.getnewaddress(), sync_fun=self.no_op)
         assert(self.rpc_online.gettransaction(txid)["confirmations"] > 0)
 
-        psbt = self.psbt_online.walletcreatefundedpsbt([], [{self.boring.getnewaddress(): self.psbt_online.getbalance()}], None, {"subtractFeeFromOutputs": [0]})['psbt']
+        psbt = self.psbt_online.sweep(receivers=[self.boring.getnewaddress()], options={"psbt": True})["psbt"]
         res = self.psbt_offline.walletprocesspsbt(psbt)
         assert(res['complete'])
         rawtx = self.nodes[0].finalizepsbt(res['psbt'])['hex']

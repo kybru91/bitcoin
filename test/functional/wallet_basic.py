@@ -231,6 +231,11 @@ class WalletTest(BitcoinTestFramework):
         spent_0 = {"txid": node0utxos[0]["txid"], "vout": node0utxos[0]["vout"]}
         assert_raises_rpc_error(-8, "Invalid parameter, expected unspent output", self.nodes[0].lockunspent, False, [spent_0])
 
+        # Restart node 2 for SFFO test below
+        self.restart_node(2, extra_args=["-deprecatedrpc=sffo"])
+        self.connect_nodes(1, 2)
+        self.connect_nodes(0, 2)
+
         # Send 10 BTC normal
         address = self.nodes[0].getnewaddress("test")
         fee_per_byte = Decimal('0.001') / 1000
@@ -267,6 +272,11 @@ class WalletTest(BitcoinTestFramework):
         fee_rate_sat_vb = 2
         fee_rate_btc_kvb = fee_rate_sat_vb * 1e3 / 1e8
         explicit_fee_rate_btc_kvb = Decimal(fee_rate_btc_kvb) / 1000
+
+        # Restart node 2, disable SFFO
+        self.restart_node(2)
+        self.connect_nodes(1, 2)
+        self.connect_nodes(0, 2)
 
         # Test passing fee_rate as a string
         txid = self.nodes[2].sendmany(amounts={address: 10}, fee_rate=str(fee_rate_sat_vb))
@@ -586,7 +596,7 @@ class WalletTest(BitcoinTestFramework):
 
         # Get all non-zero utxos together
         chain_addrs = [self.nodes[0].getnewaddress(), self.nodes[0].getnewaddress()]
-        singletxid = self.nodes[0].sendtoaddress(chain_addrs[0], self.nodes[0].getbalance(), "", "", True)
+        singletxid = self.nodes[0].sweep([chain_addrs[0]])["txid"]
         self.generate(self.nodes[0], 1, sync_fun=self.no_op)
         node0_balance = self.nodes[0].getbalance()
         # Split into two chains
