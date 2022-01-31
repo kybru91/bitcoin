@@ -153,7 +153,6 @@ bool WalletModel::validateAddress(const QString &address)
 WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransaction &transaction, const CCoinControl& coinControl)
 {
     CAmount total = 0;
-    bool fSubtractFeeFromAmount = false;
     QList<SendCoinsRecipient> recipients = transaction.getRecipients();
     std::vector<CRecipient> vecSend;
 
@@ -168,26 +167,23 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
     // Pre-check input data for validity
     for (const SendCoinsRecipient &rcp : recipients)
     {
-        if (rcp.fSubtractFeeFromAmount)
-            fSubtractFeeFromAmount = true;
-        {   // User-entered bitcoin address / amount:
-            if(!validateAddress(rcp.address))
-            {
-                return InvalidAddress;
-            }
-            if(rcp.amount <= 0)
-            {
-                return InvalidAmount;
-            }
-            setAddress.insert(rcp.address);
-            ++nAddresses;
-
-            CScript scriptPubKey = GetScriptForDestination(DecodeDestination(rcp.address.toStdString()));
-            CRecipient recipient = {scriptPubKey, rcp.amount, rcp.fSubtractFeeFromAmount};
-            vecSend.push_back(recipient);
-
-            total += rcp.amount;
+        // User-entered bitcoin address / amount:
+        if(!validateAddress(rcp.address))
+        {
+            return InvalidAddress;
         }
+        if(rcp.amount <= 0)
+        {
+            return InvalidAmount;
+        }
+        setAddress.insert(rcp.address);
+        ++nAddresses;
+
+        CScript scriptPubKey = GetScriptForDestination(DecodeDestination(rcp.address.toStdString()));
+        CRecipient recipient = {scriptPubKey, rcp.amount};
+        vecSend.push_back(recipient);
+
+        total += rcp.amount;
     }
     if(setAddress.size() != nAddresses)
     {
@@ -209,12 +205,10 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         auto& newTx = transaction.getWtx();
         newTx = m_wallet->createTransaction(vecSend, coinControl, !wallet().privateKeysDisabled() /* sign */, nChangePosRet, nFeeRequired, error);
         transaction.setTransactionFee(nFeeRequired);
-        if (fSubtractFeeFromAmount && newTx)
-            transaction.reassignAmounts(nChangePosRet);
 
         if(!newTx)
         {
-            if(!fSubtractFeeFromAmount && (total + nFeeRequired) > nBalance)
+            if(total + nFeeRequired > nBalance)
             {
                 return SendCoinsReturn(AmountWithFeeExceedsBalance);
             }

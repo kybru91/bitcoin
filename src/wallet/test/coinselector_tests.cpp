@@ -314,29 +314,6 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
 
         std::vector<COutput> coins;
 
-        add_coin(coins, *wallet, 1);
-        coins.at(0).nInputBytes = 40; // Make sure that it has a negative effective value. The next check should assert if this somehow got through. Otherwise it will fail
-        BOOST_CHECK(!SelectCoinsBnB(GroupCoins(coins), 1 * CENT, coin_selection_params_bnb.m_cost_of_change));
-
-        // Test fees subtracted from output:
-        coins.clear();
-        add_coin(coins, *wallet, 1 * CENT);
-        coins.at(0).nInputBytes = 40;
-        coin_selection_params_bnb.m_subtract_fee_outputs = true;
-        const auto result9 = SelectCoinsBnB(GroupCoins(coins), 1 * CENT, coin_selection_params_bnb.m_cost_of_change);
-        BOOST_CHECK(result9);
-        BOOST_CHECK_EQUAL(result9->GetSelectedValue(), 1 * CENT);
-    }
-
-    {
-        std::unique_ptr<CWallet> wallet = std::make_unique<CWallet>(m_node.chain.get(), "", m_args, CreateMockWalletDatabase());
-        wallet->LoadWallet();
-        LOCK(wallet->cs_wallet);
-        wallet->SetWalletFlag(WALLET_FLAG_DESCRIPTORS);
-        wallet->SetupDescriptorScriptPubKeyMans();
-
-        std::vector<COutput> coins;
-
         add_coin(coins, *wallet, 5 * CENT, 6 * 24, false, 0, true);
         add_coin(coins, *wallet, 3 * CENT, 6 * 24, false, 0, true);
         add_coin(coins, *wallet, 2 * CENT, 6 * 24, false, 0, true);

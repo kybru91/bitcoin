@@ -24,7 +24,7 @@ class WalletSendTest(BitcoinTestFramework):
         self.num_nodes = 2
         # whitelist all peers to speed up tx relay / mempool sync
         self.extra_args = [
-            ["-whitelist=127.0.0.1","-walletrbf=1", "-deprecatedrpc=sffo"],
+            ["-whitelist=127.0.0.1","-walletrbf=1"],
             ["-whitelist=127.0.0.1","-walletrbf=1"],
         ]
         getcontext().prec = 8 # Satoshi precision for Decimal
@@ -36,7 +36,7 @@ class WalletSendTest(BitcoinTestFramework):
                   arg_conf_target=None, arg_estimate_mode=None, arg_fee_rate=None,
                   conf_target=None, estimate_mode=None, fee_rate=None, add_to_wallet=None, psbt=None,
                   inputs=None, add_inputs=None, include_unsafe=None, change_address=None, change_position=None, change_type=None,
-                  include_watching=None, locktime=None, lock_unspents=None, replaceable=None, subtract_fee_from_outputs=None,
+                  include_watching=None, locktime=None, lock_unspents=None, replaceable=None,
                   expect_error=None, solving_data=None):
         assert (amount is None) != (data is None)
 
@@ -94,8 +94,6 @@ class WalletSendTest(BitcoinTestFramework):
             replaceable = True # default
         else:
             options["replaceable"] = replaceable
-        if subtract_fee_from_outputs is not None:
-            options["subtract_fee_from_outputs"] = subtract_fee_from_outputs
         if solving_data is not None:
             options["solving_data"] = solving_data
 
@@ -155,10 +153,7 @@ class WalletSendTest(BitcoinTestFramework):
             tx = from_wallet.getrawtransaction(res["txid"], True)
             assert tx
             if amount:
-                if subtract_fee_from_outputs:
-                    assert_equal(from_balance_before - from_balance, amount)
-                else:
-                    assert_greater_than(from_balance_before - from_balance, amount)
+                assert_greater_than(from_balance_before - from_balance, amount)
             else:
                 assert next((out for out in tx["vout"] if out["scriptPubKey"]["asm"] == "OP_RETURN 35"), None)
         else:
@@ -167,8 +162,7 @@ class WalletSendTest(BitcoinTestFramework):
         if to_wallet:
             self.sync_mempools()
             if add_to_wallet:
-                if not subtract_fee_from_outputs:
-                    assert_equal(to_wallet.getbalances()["mine"]["untrusted_pending"], to_untrusted_pending_before + Decimal(amount if amount else 0))
+                assert_equal(to_wallet.getbalances()["mine"]["untrusted_pending"], to_untrusted_pending_before + Decimal(amount if amount else 0))
             else:
                 assert_equal(to_wallet.getbalances()["mine"]["untrusted_pending"], to_untrusted_pending_before)
 
@@ -467,7 +461,7 @@ class WalletSendTest(BitcoinTestFramework):
         assert_equal(self.nodes[0].gettransaction(res["txid"])["bip125-replaceable"], "no")
 
         self.log.info("Subtract fee from output")
-        self.test_send(from_wallet=w0, to_wallet=w1, amount=1, subtract_fee_from_outputs=[0])
+        self.test_send(from_wallet=w0, to_wallet=w1, amount=1)
 
         self.log.info("Include unsafe inputs")
         self.nodes[1].createwallet(wallet_name="w5")

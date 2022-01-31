@@ -142,7 +142,7 @@ bool CreateTransaction(CWallet& wallet, const std::vector<CRecipient>& vecSend, 
  * Insert additional inputs into the transaction by
  * calling CreateTransaction();
  */
-bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl);
+bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, CCoinControl);
 } // namespace wallet
 
 #endif // BITCOIN_WALLET_SPEND_H

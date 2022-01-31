@@ -468,11 +468,7 @@ std::optional<SelectionResult> SelectCoins(const CWallet& wallet, const std::vec
             return std::nullopt; // Not solvable, can't estimate size for fee
         }
         coin.effective_value = coin.txout.nValue - coin_selection_params.m_effective_feerate.GetFee(coin.m_input_bytes);
-        if (coin_selection_params.m_subtract_fee_outputs) {
-            value_to_select -= coin.txout.nValue;
-        } else {
-            value_to_select -= coin.effective_value;
-        }
+        value_to_select -= coin.effective_value;
         setPresetCoins.insert(coin);
         /* Set depth, from_me, ancestors, and descendants to 0 or false as don't matter for preset inputs as no actual selection is being done.
          * positive_only is set to false because we want to include all preset inputs, even if they are dust.
@@ -653,14 +649,8 @@ static bool CreateTransactionInternal(
     CAmount recipients_sum = 0;
     const OutputType change_type = wallet.TransactionChangeType(coin_control.m_change_type ? *coin_control.m_change_type : wallet.m_default_change_type, vecSend);
     ReserveDestination reservedest(&wallet, change_type);
-    unsigned int outputs_to_subtract_fee_from = 0; // The number of outputs which we are subtracting the fee from
     for (const auto& recipient : vecSend) {
         recipients_sum += recipient.nAmount;
-
-        if (recipient.fSubtractFeeFromAmount) {
-            outputs_to_subtract_fee_from++;
-            coin_selection_params.m_subtract_fee_outputs = true;
-        }
     }
 
     // Create change script that will be used if we need change
@@ -730,17 +720,13 @@ static bool CreateTransactionInternal(
     coin_selection_params.m_cost_of_change = coin_selection_params.m_discard_feerate.GetFee(coin_selection_params.change_spend_size) + coin_selection_params.m_change_fee;
 
     // vouts to the payees
-    if (!coin_selection_params.m_subtract_fee_outputs) {
-        coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
-    }
+    coin_selection_params.tx_noinputs_size = 11; // Static vsize overhead + outputs vsize. 4 nVersion, 4 nLocktime, 1 input count, 1 output count, 1 witness overhead (dummy, flag, stack size)
     for (const auto& recipient : vecSend)
     {
         CTxOut txout(recipient.nAmount, recipient.scriptPubKey);
 
         // Include the fee cost for outputs.
-        if (!coin_selection_params.m_subtract_fee_outputs) {
-            coin_selection_params.tx_noinputs_size += ::GetSerializeSize(txout, PROTOCOL_VERSION);
-        }
+        coin_selection_params.tx_noinputs_size += ::GetSerializeSize(txout, PROTOCOL_VERSION);
 
         if (IsDust(txout, wallet.chain().relayDustFee()))
         {
@@ -810,11 +796,9 @@ static bool CreateTransactionInternal(
     }
     nFeeRet = coin_selection_params.m_effective_feerate.GetFee(nBytes);
 
-    // Subtract fee from the change output if not subtracting it from recipient outputs
+    // Subtract fee from the change output
     CAmount fee_needed = nFeeRet;
-    if (!coin_selection_params.m_subtract_fee_outputs) {
-        change_position->nValue -= fee_needed;
-    }
+    change_position->nValue -= fee_needed;
 
     // We want to drop the change to fees if:
     // 1. The change output would be dust
@@ -832,50 +816,12 @@ static bool CreateTransactionInternal(
         fee_needed = coin_selection_params.m_effective_feerate.GetFee(nBytes);
     }
 
-    // The only time that fee_needed should be less than the amount available for fees (in change_and_fee - change_amount) is when
-    // we are subtracting the fee from the outputs. If this occurs at any other time, it is a bug.
-    assert(coin_selection_params.m_subtract_fee_outputs || fee_needed <= change_and_fee - change_amount);
+    // It is a bug if fee_needed is less than the amount available for fees (in change_and_fee - change_amount)
+    assert(fee_needed <= change_and_fee - change_amount);
 
     // Update nFeeRet in case fee_needed changed due to dropping the change output
     if (fee_needed <= change_and_fee - change_amount) {
         nFeeRet = change_and_fee - change_amount;
-    }
-
-    // Reduce output values for subtractFeeFromAmount
-    if (coin_selection_params.m_subtract_fee_outputs) {
-        CAmount to_reduce = fee_needed + change_amount - change_and_fee;
-        int i = 0;
-        bool fFirst = true;
-        for (const auto& recipient : vecSend)
-        {
-            if (i == nChangePosInOut) {
-                ++i;
-            }
-            CTxOut& txout = txNew.vout[i];
-
-            if (recipient.fSubtractFeeFromAmount)
-            {
-                txout.nValue -= to_reduce / outputs_to_subtract_fee_from; // Subtract fee equally from each selected recipient
-
-                if (fFirst) // first receiver pays the remainder not divisible by output count
-                {
-                    fFirst = false;
-                    txout.nValue -= to_reduce % outputs_to_subtract_fee_from;
-                }
-
-                // Error if this output is reduced to be below dust
-                if (IsDust(txout, wallet.chain().relayDustFee())) {
-                    if (txout.nValue < 0) {
-                        error = _("The transaction amount is too small to pay the fee");
-                    } else {
-                        error = _("The transaction amount is too small to send after the fee has been deducted");
-                    }
-                    return false;
-                }
-            }
-            ++i;
-        }
-        nFeeRet = fee_needed;
     }
 
     // Give up if change keypool ran out and change is required
@@ -976,14 +922,14 @@ bool CreateTransaction(
     return res;
 }
 
-bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl coinControl)
+bool FundTransaction(CWallet& wallet, CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, bilingual_str& error, bool lockUnspents, CCoinControl coinControl)
 {
     std::vector<CRecipient> vecSend;
 
     // Turn the txout set into a CRecipient vector.
     for (size_t idx = 0; idx < tx.vout.size(); idx++) {
         const CTxOut& txOut = tx.vout[idx];
-        CRecipient recipient = {txOut.scriptPubKey, txOut.nValue, setSubtractFeeFromOutputs.count(idx) == 1};
+        CRecipient recipient = {txOut.scriptPubKey, txOut.nValue};
         vecSend.push_back(recipient);
     }
 

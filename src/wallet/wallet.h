@@ -222,7 +222,6 @@ struct CRecipient
 {
     CScript scriptPubKey;
     CAmount nAmount;
-    bool fSubtractFeeFromAmount;
 };
 
 class WalletRescanReserver; //forward declarations for ScanForWalletTransactions/RescanFromTime

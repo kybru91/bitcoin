@@ -93,8 +93,6 @@ struct CoinSelectionParams
     /** Size of the transaction before coin selection, consisting of the header and recipient
      * output(s), excluding the inputs and change output(s). */
     size_t tx_noinputs_size = 0;
-    /** Indicate that we are subtracting the fee from outputs */
-    bool m_subtract_fee_outputs = false;
     /** When true, always spend all (up to OUTPUT_GROUP_MAX_ENTRIES) or none of the outputs
      * associated with the same address. This helps reduce privacy leaks resulting from address
      * reuse. Dust outputs are not eligible to be added to output groups and thus not considered. */
@@ -165,15 +163,11 @@ struct OutputGroup
      * a lower feerate). Calculated using long term fee estimate. This is used to decide whether
      * it could be economical to create a change output. */
     CFeeRate m_long_term_feerate{0};
-    /** Indicate that we are subtracting the fee from outputs.
-     * When true, the value that is used for coin selection is the UTXO's real value rather than effective value */
-    bool m_subtract_fee_outputs{false};
 
     OutputGroup() {}
     OutputGroup(const CoinSelectionParams& params) :
         m_effective_feerate(params.m_effective_feerate),
-        m_long_term_feerate(params.m_long_term_feerate),
-        m_subtract_fee_outputs(params.m_subtract_fee_outputs)
+        m_long_term_feerate(params.m_long_term_feerate)
     {}
 
     void Insert(const CInputCoin& output, int depth, bool from_me, size_t ancestors, size_t descendants, bool positive_only);

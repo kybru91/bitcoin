@@ -354,7 +354,7 @@ bool OutputGroup::EligibleForSpending(const CoinEligibilityFilter& eligibility_f
 
 CAmount OutputGroup::GetSelectionAmount() const
 {
-    return m_subtract_fee_outputs ? m_value : effective_value;
+    return effective_value;
 }
 
 CAmount GetSelectionWaste(const std::set<CInputCoin>& inputs, CAmount change_cost, CAmount target, bool use_effective_value)
@@ -408,7 +408,6 @@ void SelectionResult::Clear()
 void SelectionResult::AddInput(const OutputGroup& group)
 {
     util::insert(m_selected_inputs, group.m_outputs);
-    m_use_effective = !group.m_subtract_fee_outputs;
 }
 
 const std::set<CInputCoin>& SelectionResult::GetInputSet() const
