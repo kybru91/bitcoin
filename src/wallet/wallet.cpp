@@ -2036,8 +2036,6 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
             any_wpkh = true;
         } else if (type == TxoutType::SCRIPTHASH) {
             any_sh = true;
-        } else if (type == TxoutType::PUBKEYHASH) {
-            any_pkh = true;
         }
     }
 
@@ -2056,11 +2054,6 @@ OutputType CWallet::TransactionChangeType(const std::optional<OutputType>& chang
         // Currently sh_wpkh is the only type supported by the P2SH_SEGWIT spkman
         // As of 2021 about 80% of all SH are wrapping WPKH, so use that
         return OutputType::P2SH_SEGWIT;
-    }
-    const bool has_legacy_spkman(GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true));
-    if (has_legacy_spkman && any_pkh) {
-        // Currently pkh is the only type supported by the LEGACY spkman
-        return OutputType::LEGACY;
     }
 
     if (has_bech32m_spkman) {
